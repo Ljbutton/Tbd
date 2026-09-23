@@ -1,0 +1,14 @@
+# Keep the build context small and never ship local state into the image.
+# node_modules is rebuilt by `npm ci` inside the image (the Playwright base
+# image is Linux x64; a locally built better-sqlite3 binary must not leak in).
+node_modules
+.git
+data
+.e2e-data
+test-results
+playwright-report
+.env
+*.log
+.DS_Store
+# Rendered at build time by `npm run sample`; a stale local copy is never copied in.
+public/sample-report.pdf

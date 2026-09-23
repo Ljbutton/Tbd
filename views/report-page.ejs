@@ -1,0 +1,161 @@
+<%#
+  Public report page (spec 6.5). Four states by audit status:
+    progress  queued/crawling/scanning/writing/rendering: progress card polled by app.js
+    held      Reviewed Audit waiting for a human, with the automated findings as a preview
+    failed    error text and what to do next
+    ready     downloads row, re-scan card and the embedded report (web mode)
+  The only raw output is reportHtml, the fully escaped fragment from src/report/render.ts.
+%>
+<section class="container section-tight report-page">
+  <p class="eyebrow">Accessibility audit<% if (isRescan) { %> &middot; Re-scan<% } %></p>
+  <h1 class="break"><%= hostname %></h1>
+  <p class="muted break">
+    <%= audit.url %> &middot; <%= tierName %><% if (isWhiteLabel && audit.agency_name) { %> for <%= audit.agency_name %><% } %> &middot; ordered <%= orderedOn %>
+  </p>
+
+<% if (state === "progress") { %>
+  <div class="card report-progress" data-testid="report-progress" data-poll-url="<%= statusUrl %>" data-poll-interval="3000">
+    <p class="row" role="status" aria-live="polite">
+      <span class="spinner" aria-hidden="true"></span>
+      <strong class="report-progress__label" data-poll-field="label"><%= statusLabel %></strong>
+    </p>
+    <div class="progress" aria-hidden="true">
+      <div class="progress-bar" data-poll-bar style="width: <%= progressPercent %>%"></div>
+    </div>
+    <p class="mt-2 mb-0">
+      <span data-poll-field="progressPages"><%= audit.progress_pages %></span> of up to <%= audit.page_limit %> pages scanned
+      &middot; <span data-poll-field="progressIssues"><%= audit.progress_issues %></span> issues found so far
+    </p>
+    <p class="small muted mb-0" data-poll-field="note"><%= audit.progress_note || "" %></p>
+    <p class="small muted mt-2 mb-0">
+      This page updates itself every few seconds; most audits finish in 5-10 minutes. Bookmark it or keep the link from your email.
+      <noscript>Without JavaScript the page reloads every 10 seconds.</noscript>
+    </p>
+  </div>
+  <p class="small muted mt-2">
+    <% if (emailOutbox) { %>In test mode the report-ready email will appear in <a href="/outbox">/outbox</a>.<% } else { %>We'll also email <%= audit.email %> when the report is ready.<% } %>
+  </p>
+
+<% } else if (state === "held") { %>
+  <div class="alert alert-info" role="status" data-testid="held-notice">
+    <strong>Your Reviewed Audit is being checked by a human.</strong> You'll get an email within 2 business days.
+  </div>
+  <div class="card">
+    <h2 class="card-title">Automated findings (preview)</h2>
+    <p class="muted">The automated scan is done. A person is now running keyboard, focus-order and screen-reader spot checks and editing the write-up. The final report, PDF and exports appear here once it is released.</p>
+    <% if (preview.length === 0) { %>
+      <p class="mb-0">The automated checks found no issues on the pages we scanned. The manual review covers what a tool cannot judge.</p>
+    <% } else { %>
+      <div class="table-wrap mb-0">
+        <table class="table table-compact">
+          <caption class="visually-hidden">Automated findings ranked by priority</caption>
+          <thead>
+            <tr>
+              <th scope="col" class="num">#</th>
+              <th scope="col">Issue</th>
+              <th scope="col">Impact</th>
+              <th scope="col">Confidence</th>
+              <th scope="col" class="num">Pages</th>
+              <th scope="col" class="num">Elements</th>
+            </tr>
+          </thead>
+          <tbody>
+            <% preview.forEach((row) => { %>
+              <tr>
+                <td class="num"><%= row.rank %></td>
+                <td><%= row.title %><br><code><%= row.ruleId %></code></td>
+                <td><span class="badge badge-<%= row.impact %>"><%= row.impactLabel %></span></td>
+                <td><span class="badge badge-<%= row.confidence %>"><%= row.confidenceLabel %></span></td>
+                <td class="num"><%= row.pagesAffected %></td>
+                <td class="num"><%= row.nodesTotal %></td>
+              </tr>
+            <% }) %>
+          </tbody>
+        </table>
+      </div>
+    <% } %>
+  </div>
+
+<% } else if (state === "failed") { %>
+  <div class="alert alert-error" role="alert" data-testid="failed-notice">
+    <strong>This audit could not be completed.</strong> <%= failure %>
+  </div>
+  <div class="card">
+    <p class="mb-0">We've been notified; reply to your receipt email for a refund or re-run. If the address was wrong or the site was offline, tell us the right address and we'll run it again.</p>
+  </div>
+
+<% } else { %>
+  <div class="row report-downloads" role="group" aria-label="Downloads" data-testid="report-downloads">
+    <% if (hasPdf) { %><a class="btn btn-primary" href="<%= downloads.pdf %>">Download PDF</a><% } %>
+    <a class="btn" href="<%= downloads.json %>">JSON</a>
+    <a class="btn" href="<%= downloads.csv %>">CSV</a>
+    <a class="btn" href="<%= downloads.record %>">Remediation record</a>
+    <button type="button" class="btn" data-copy-url="<%= downloads.html %>">Copy issue table as HTML</button>
+    <noscript><a class="btn" href="<%= downloads.html %>">Issue table as HTML</a></noscript>
+  </div>
+
+  <div class="card card-flat mt-2 rescan-card" data-testid="rescan-card">
+    <% if (rescan.state === "available") { %>
+      <h2 class="card-title" style="font-size:1.15rem;">1 free re-scan available until <%= rescan.deadline %></h2>
+      <p>Once your fixes are live, run the re-scan to get a new report with a before/after comparison and a dated remediation record. It scans the same address with the same page cap.</p>
+      <form method="post" action="<%= base %>/rescan" class="mb-0">
+        <button type="submit" class="btn btn-secondary">Run the free re-scan</button>
+      </form>
+    <% } else if (rescan.state === "used") { %>
+      <h2 class="card-title" style="font-size:1.15rem;">Re-scan used</h2>
+      <p class="mb-0">
+        The free re-scan for this audit has been used.
+        <% if (rescan.relatedUrl) { %><a href="<%= rescan.relatedUrl %>">Open the re-scan report<% if (rescan.relatedDate) { %> from <%= rescan.relatedDate %><% } %></a>.<% } %>
+      </p>
+    <% } else if (rescan.state === "is_rescan") { %>
+      <h2 class="card-title" style="font-size:1.15rem;">This is your re-scan</h2>
+      <p class="mb-0">
+        The "Before / after" section below compares this scan with your original audit<% if (rescan.relatedDate) { %> from <%= rescan.relatedDate %><% } %>.
+        <% if (rescan.relatedUrl) { %><a href="<%= rescan.relatedUrl %>">Open the original report</a>.<% } %>
+      </p>
+    <% } else { %>
+      <h2 class="card-title" style="font-size:1.15rem;">Re-scan window closed</h2>
+      <p class="mb-0">The free re-scan could be used until <%= rescan.deadline %>. To check your fixes now, order a new audit of the same address.</p>
+    <% } %>
+  </div>
+
+  <% if (reportHtml) { %>
+    <div class="report-embed mt-4">
+      <%- reportHtml %>
+    </div>
+  <% } else { %>
+    <div class="alert alert-warning mt-2" role="status">
+      The report files are available above, but the page version could not be built because the scan summary is missing. Reply to your receipt email and we'll fix it.
+    </div>
+    <% if (preview.length > 0) { %>
+      <div class="table-wrap">
+        <table class="table table-compact">
+          <caption class="visually-hidden">Findings ranked by priority</caption>
+          <thead>
+            <tr>
+              <th scope="col" class="num">#</th>
+              <th scope="col">Issue</th>
+              <th scope="col">Impact</th>
+              <th scope="col">Confidence</th>
+              <th scope="col" class="num">Pages</th>
+              <th scope="col" class="num">Elements</th>
+            </tr>
+          </thead>
+          <tbody>
+            <% preview.forEach((row) => { %>
+              <tr>
+                <td class="num"><%= row.rank %></td>
+                <td><%= row.title %><br><code><%= row.ruleId %></code></td>
+                <td><span class="badge badge-<%= row.impact %>"><%= row.impactLabel %></span></td>
+                <td><span class="badge badge-<%= row.confidence %>"><%= row.confidenceLabel %></span></td>
+                <td class="num"><%= row.pagesAffected %></td>
+                <td class="num"><%= row.nodesTotal %></td>
+              </tr>
+            <% }) %>
+          </tbody>
+        </table>
+      </div>
+    <% } %>
+  <% } %>
+<% } %>
+</section>

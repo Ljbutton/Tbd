@@ -17,11 +17,11 @@
 
   <div class="grid grid-3 mb-2">
     <div class="stat">
-      <span class="stat-value"><%= code.credits_left %></span>
+      <span class="stat-value" data-testid="credits-left"><%= code.credits_left %></span>
       <span class="stat-label">credits left of <%= code.credits_total %></span>
     </div>
     <div class="stat">
-      <span class="stat-value"><%= audits.length %></span>
+      <span class="stat-value" data-testid="audits-started"><%= audits.length %></span>
       <span class="stat-label">audits started with this code</span>
     </div>
     <div class="stat">

@@ -1,0 +1,60 @@
+<section class="container section-tight">
+  <p class="eyebrow">Test mode</p>
+  <h1>Email outbox</h1>
+  <p class="muted">
+    No <code>RESEND_API_KEY</code> is set, so every email the app would send is stored here instead.
+    Showing the last <%= limit %>.
+  </p>
+
+  <% if (email) { %>
+    <div class="card mb-2">
+      <h2 class="card-title" style="font-size:1.25rem;"><%= email.subject %></h2>
+      <dl class="admin-kv">
+        <dt>To</dt><dd><%= email.to_email %></dd>
+        <dt>Date</dt><dd><%= formatStamp(email.created_at) %></dd>
+        <dt>Stored as</dt><dd><%= email.sent_via %></dd>
+      </dl>
+      <iframe class="outbox-frame" sandbox title="Preview of the email: <%= email.subject %>" srcdoc="<%= email.html %>"></iframe>
+      <p class="small muted mt-2">
+        The preview is sandboxed (no scripts, no navigation), so use the links below to follow them.
+        <a href="/outbox/<%= email.id %>/raw" target="_blank" rel="noopener">Open the raw HTML in a new tab</a>.
+      </p>
+      <% if (links.length > 0) { %>
+        <h3 style="font-size:1rem;">Links in this email</h3>
+        <ul class="mb-0">
+          <% links.forEach((link) => { %>
+            <li class="break"><a href="<%= link %>"><%= link %></a></li>
+          <% }) %>
+        </ul>
+      <% } %>
+    </div>
+  <% } %>
+
+  <% if (emails.length === 0) { %>
+    <p class="muted">Nothing here yet. Complete a test checkout or let an audit finish and its email will show up.</p>
+  <% } else { %>
+    <div class="table-wrap">
+      <table class="table table-compact">
+        <caption class="visually-hidden">Stored emails, newest first</caption>
+        <thead>
+          <tr>
+            <th scope="col">Subject</th>
+            <th scope="col">To</th>
+            <th scope="col">Date</th>
+            <th scope="col">Via</th>
+          </tr>
+        </thead>
+        <tbody>
+          <% emails.forEach((row) => { %>
+            <tr class="<%= email && row.id === email.id ? "row-highlight" : "" %>">
+              <td><a href="/outbox/<%= row.id %>"><%= row.subject %></a></td>
+              <td class="break"><%= row.to_email %></td>
+              <td><%= formatStamp(row.created_at) %></td>
+              <td><span class="badge"><%= row.sent_via %></span></td>
+            </tr>
+          <% }) %>
+        </tbody>
+      </table>
+    </div>
+  <% } %>
+</section>

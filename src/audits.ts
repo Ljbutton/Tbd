@@ -1,9 +1,23 @@
 // Shared audit repository: every module that reads or writes the audits,
 // pages or findings tables goes through these functions.
 
+import path from "node:path";
+import { dataPaths } from "./config.js";
 import { db, nowIso } from "./db.js";
+import { computeDelta } from "./report/delta.js";
 import { findingToRow, rowToFinding } from "./report/finding-rows.js";
-import type { AuditRow, AuditStatus, Finding, FindingRow, PageRow, PageScan, Tier } from "./types.js";
+import type {
+  AuditRow,
+  AuditStatus,
+  AuditSummary,
+  Delta,
+  Finding,
+  FindingRow,
+  Narrative,
+  PageRow,
+  PageScan,
+  Tier,
+} from "./types.js";
 import { newId, newToken } from "./util/ids.js";
 
 export interface CreateAuditInput {
@@ -28,6 +42,7 @@ const insertAuditStmt = db.prepare(`
 `);
 const getAuditStmt = db.prepare("SELECT * FROM audits WHERE id = ?");
 const getAuditByTokenStmt = db.prepare("SELECT * FROM audits WHERE token = ?");
+const latestRescanStmt = db.prepare("SELECT * FROM audits WHERE rescan_of = ? ORDER BY created_at DESC, rowid DESC LIMIT 1");
 const listAuditsStmt = db.prepare("SELECT * FROM audits ORDER BY created_at DESC LIMIT ?");
 const appendLogStmt = db.prepare("UPDATE audits SET log = log || ? WHERE id = ?");
 const findingsStmt = db.prepare("SELECT * FROM findings WHERE audit_id = ? ORDER BY rank ASC");
@@ -85,8 +100,86 @@ export function getAuditByToken(token: string): AuditRow | null {
   return (getAuditByTokenStmt.get(token) as AuditRow | undefined) ?? null;
 }
 
+/** The most recent re-scan created from this audit, or null when its re-scan was never used. */
+export function latestRescanOf(auditId: string): AuditRow | null {
+  if (!auditId) return null;
+  return (latestRescanStmt.get(auditId) as AuditRow | undefined) ?? null;
+}
+
 export function listAudits(limit = 100): AuditRow[] {
   return listAuditsStmt.all(Math.max(1, Math.floor(limit))) as AuditRow[];
+}
+
+// ---------------------------------------------------------------------------
+// Files: ${dataDir}/audits/${auditId}/report.pdf|report.json|report.csv|shots/f{rank}.png
+// ---------------------------------------------------------------------------
+
+export interface ReportFilePaths {
+  dir: string;
+  shots: string;
+  pdf: string;
+  json: string;
+  csv: string;
+}
+
+/** Absolute paths of an audit's directory and report files (the pipeline and the admin re-render use the same ones). */
+export function reportFilePaths(auditId: string): ReportFilePaths {
+  const dir = path.join(dataPaths().audits, auditId);
+  return {
+    dir,
+    shots: path.join(dir, "shots"),
+    pdf: path.join(dir, "report.pdf"),
+    json: path.join(dir, "report.json"),
+    csv: path.join(dir, "report.csv"),
+  };
+}
+
+// ---------------------------------------------------------------------------
+// JSON columns
+// ---------------------------------------------------------------------------
+
+function parseJsonColumn<T>(json: string | null, isValid: (value: unknown) => boolean): T | null {
+  if (!json) return null;
+  try {
+    const parsed: unknown = JSON.parse(json);
+    return isValid(parsed) ? (parsed as T) : null;
+  } catch {
+    return null;
+  }
+}
+
+/** The stored scan summary, or null before the scanning phase has finished (or when the column is unreadable). */
+export function auditSummary(audit: Pick<AuditRow, "summary_json">): AuditSummary | null {
+  return parseJsonColumn<AuditSummary>(
+    audit.summary_json,
+    (value) => typeof value === "object" && value !== null && typeof (value as { pagesScanned?: unknown }).pagesScanned === "number",
+  );
+}
+
+/** The stored narrative, or null before the writing phase has finished (or when the column is unreadable). */
+export function auditNarrative(audit: Pick<AuditRow, "narrative_json">): Narrative | null {
+  return parseJsonColumn<Narrative>(
+    audit.narrative_json,
+    (value) => typeof value === "object" && value !== null && Array.isArray((value as { findings?: unknown }).findings),
+  );
+}
+
+/**
+ * Before/after comparison for a re-scan: the original audit's findings against
+ * `findings`. Null when the audit is not a re-scan or the original is gone.
+ * Dates: the original's finished_at (or created_at) and this audit's
+ * finished_at (or `rescanDate`, or created_at), so the pipeline and the admin
+ * re-render produce the same dates.
+ */
+export function deltaForAudit(audit: AuditRow, findings: Finding[], rescanDate?: string): Delta | null {
+  if (!audit.rescan_of) return null;
+  const original = getAudit(audit.rescan_of);
+  if (!original) return null;
+  return computeDelta(findingsForAudit(original.id), findings, {
+    originalAuditId: original.id,
+    originalDate: original.finished_at ?? original.created_at,
+    rescanDate: audit.finished_at ?? rescanDate ?? audit.created_at,
+  });
 }
 
 /** Columns updateAudit() may touch; the primary key is never updatable. */

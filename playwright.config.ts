@@ -29,6 +29,9 @@ export default defineConfig({
       PORT: "3101",
       DATA_DIR: ".e2e-data",
       BASE_URL,
+      // The teaser limiter is per process and counts every POST /api/teaser,
+      // including the invalid-URL cases the specs exercise.
+      TEASER_RATE_LIMIT: "50",
     },
   },
 });

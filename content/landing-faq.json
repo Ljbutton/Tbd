@@ -1,7 +1,7 @@
 [
   {
-    "q": "Is this a compliance certificate?",
-    "a": "No. AccessAudit runs automated WCAG 2.2 A/AA checks with axe-core, ranks what it finds and explains it in plain English. Automated checks find roughly 30-40% of WCAG issues. This is an automated audit plus a manual checklist, not a legal opinion or a compliance certification. Nobody can certify a website from a scan alone, and anyone who says otherwise is selling you something."
+    "q": "Is this a certificate that my site meets the ADA or WCAG?",
+    "a": "No. AccessAudit runs automated WCAG 2.2 A/AA checks with axe-core, ranks what it finds and explains it in plain English. Automated checks find roughly 30-40% of WCAG issues. This is an automated audit plus a manual checklist, not a legal opinion or a compliance certification. No scan alone can prove that a website meets the law, and anyone who says otherwise is selling you something."
   },
   {
     "q": "What does automated testing miss?",

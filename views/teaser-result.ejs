@@ -1,0 +1,64 @@
+<%
+  // Server-rendered teaser result for browsers without JavaScript (POST /api/teaser?format=html).
+  // app.js renders the same card client-side; keep the two in step.
+  const impactLabels = { critical: "Critical", serious: "Serious", moderate: "Moderate", minor: "Minor" };
+  const hasError = typeof error === "string" && error !== "";
+  const data = !hasError && result ? result : null;
+  const pageLimit = typeof pageLimitSingle === "number" && pageLimitSingle > 0 ? pageLimitSingle : 15;
+  const plural = (n, word) => n + " " + word + (n === 1 ? "" : "s");
+%>
+<section class="container section teaser-page">
+  <p class="eyebrow">Free scan</p>
+  <% if (hasError || data === null) { %>
+    <h1>We couldn't scan that page</h1>
+    <div class="alert alert-error" role="alert"><%= hasError ? error : "Something went wrong while scanning. Try again in a minute." %></div>
+    <%- include("partials/teaser-box", { heading: "Try another address" }) %>
+  <% } else { %>
+    <h1>Free scan results</h1>
+    <p class="lead break">
+      Scanned <a href="<%= data.url %>" rel="nofollow noopener"><%= data.url %></a>
+      <% if (data.title) { %>(<%= data.title %>)<% } %>
+      at desktop size.
+    </p>
+
+    <div class="card teaser-card">
+      <h2 class="teaser-card__title"><%= data.violationNodes %> issues on this page across <%= data.rulesFailed %> rules</h2>
+      <% if (data.cached) { %><p class="small muted">Cached result from the last 24 hours.</p><% } %>
+
+      <% if (data.top.length === 0) { %>
+        <p>Nothing on this page failed our automated checks. That is a good sign, but automated checks find roughly 30-40% of WCAG issues, and the rest of your site may differ.</p>
+      <% } else { %>
+        <p class="muted">The <%= data.top.length %> highest-ranked problems, with the exact markup that failed:</p>
+        <ol class="issue-list">
+          <% data.top.forEach((issue) => { %>
+            <li class="issue-card">
+              <div class="issue-card__head">
+                <h3><%= issue.title %></h3>
+                <span class="badge badge-<%= issue.impact %>"><%= impactLabels[issue.impact] || issue.impact %></span>
+                <span class="small muted"><%= plural(issue.nodes, "element") %> on this page</span>
+              </div>
+              <p><%= issue.plainEnglish %></p>
+              <% if (issue.screenshotDataUrl) { %>
+                <img class="issue-shot" src="<%= issue.screenshotDataUrl %>" alt="Screenshot of the element on the scanned page that fails the check: <%= issue.title %>">
+              <% } %>
+              <% if (issue.exampleHtml) { %>
+                <pre class="issue-code"><code><%= issue.exampleHtml %></code></pre>
+              <% } %>
+            </li>
+          <% }) %>
+        </ol>
+      <% } %>
+
+      <% if (data.needsManualCount > 0) { %>
+        <p class="small muted mt-2"><%= plural(data.needsManualCount, "more item") %> on this page need a person to check; the full audit lists them.</p>
+      <% } %>
+
+      <footer class="teaser-card__footer">
+        <p>This is one page at desktop size. The full audit scans up to <%= pageLimit %> pages at desktop and mobile.</p>
+        <a class="btn btn-primary btn-lg" href="<%= orderUrl %>">Get the full-site audit &mdash; $49</a>
+      </footer>
+    </div>
+
+    <p class="mt-2"><a href="/#scan">Scan another page</a></p>
+  <% } %>
+</section>

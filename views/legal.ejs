@@ -1,0 +1,133 @@
+<%
+  const isTerms = page === "terms";
+  const lastUpdated = typeof updated === "string" ? updated : "";
+%>
+<article class="container section section-narrow legal">
+  <p class="eyebrow">Legal</p>
+  <% if (isTerms) { %>
+    <h1>Terms of service</h1>
+    <p class="muted small">Last updated <%= lastUpdated %>. Written in plain English on purpose; if anything here is unclear, reply to your receipt email and we will explain it.</p>
+
+    <h2>1. What AccessAudit is</h2>
+    <p>AccessAudit is an automated website testing tool. When you give us a web address, a headless browser we operate loads the publicly reachable pages of that site, runs the open-source axe-core accessibility engine against them, and produces a report that ranks what it found, explains each item in plain English and suggests corrected markup.</p>
+    <p>AccessAudit is not a law firm and does not provide legal advice. Nothing in a report, an email or on this site is a legal opinion about whether your website meets any law, regulation or standard. Automated checks find roughly 30-40% of WCAG issues. This is an automated audit plus a manual checklist, not a legal opinion or a compliance certification.</p>
+
+    <h2>2. What you are buying</h2>
+    <ul>
+      <li><strong>Site Audit (<%= pricing.singlePrice %>):</strong> one automated audit of up to <%= pricing.pageLimitSingle %> pages of one website at desktop and mobile sizes, delivered as a report page with PDF, JSON and CSV downloads and a dated remediation record, plus one free re-scan of the same site within 30 days.</li>
+      <li><strong>Reviewed Audit (<%= pricing.reviewedPrice %>):</strong> everything in the Site Audit, plus a person runs keyboard, focus-order and screen-reader spot checks and edits the narrative by hand before it is released, normally within 2 business days.</li>
+      <li><strong>Agency 5-Pack (<%= pricing.pack5Price %>):</strong> a code worth five audits of up to <%= pricing.pageLimitPack %> pages each, delivered as white-label reports carrying your agency name and logo. Credits do not expire. Each audit includes its own free re-scan.</li>
+    </ul>
+    <p>Every purchase is a one-time payment. There is no subscription and nothing is installed on your website.</p>
+
+    <h2>3. Delivery</h2>
+    <p>A Site Audit normally finishes within about 10 minutes of payment. Slow sites, sites that block automated browsers, or a queue of other audits can make it take longer. Your report page shows live progress and we email you when it is ready. If the start page you gave us cannot be loaded at all, the audit fails and you can ask for a re-run or a refund.</p>
+
+    <h2>4. Limits of automated testing</h2>
+    <p>Automated tools detect a subset of accessibility barriers. Every report therefore ends with a manual checklist describing what still needs a person, and every finding is labelled either "automated" (the tool saw it fail) or "needs manual check" (the tool saw something suspicious). We do not promise that a report lists every issue on your site, that fixing the listed issues prevents complaints or lawsuits, or that any particular finding is a legal problem.</p>
+
+    <h2>5. Your responsibilities</h2>
+    <ul>
+      <li>Only scan websites you own or are authorized to test. By starting a scan you confirm you have that authority.</li>
+      <li>Our crawler identifies itself with the user agent suffix "AccessAuditBot", follows only same-site links, respects robots.txt for discovered pages, and always scans the start page you asked for.</li>
+      <li>Report pages are protected by an unguessable link, not a password. Anyone you share the link with can view the report.</li>
+      <li>Do not use the service to probe, overload or attack a website. We may refuse or cancel scans that look abusive, and we rate-limit free scans per address.</li>
+    </ul>
+
+    <h2>6. Refunds</h2>
+    <p>Full refund within 7 days of purchase if the report is unusable for your site, for example because most pages could not be loaded. Reply to your receipt email and we will sort it out; you do not need to explain yourself. Refunds go back to the original payment method. A refunded Agency 5-Pack code is cancelled for any unused credits.</p>
+
+    <h2>7. Agencies and white-label reports</h2>
+    <p>Agency 5-Pack reports may be presented to your clients under your own brand. You remain responsible for what you tell your clients about the report. You may not describe an AccessAudit report as proof that a site meets any law or standard, as a legal opinion or as a guarantee, and you may not remove the disclaimer or the manual checklist from a report you pass on.</p>
+
+    <h2>8. Payments</h2>
+    <p>Payments are processed by Stripe. We never see or store your card number. Prices are in US dollars and may change; the price shown at checkout is the price you pay.</p>
+
+    <h2>9. Availability and changes</h2>
+    <p>The service may be unavailable from time to time for maintenance or because of problems outside our control. We may change these terms; the date at the top tells you when they last changed, and the terms in force when you bought an audit apply to that purchase.</p>
+
+    <h2>10. Liability</h2>
+    <p>To the extent permitted by law, our total liability for anything arising from a purchase is limited to the amount you paid for it, and we are not liable for indirect or consequential losses, including the outcome of any complaint, demand letter or lawsuit concerning your website.</p>
+
+    <h2>11. Contact</h2>
+    <p>Reply to your receipt email or to any email we have sent you. That reaches the people who built the product.</p>
+  <% } else { %>
+    <h1>Privacy policy</h1>
+    <p class="muted small">Last updated <%= lastUpdated %>. The short version: we store what we need to scan your site and deliver your report, we do not run tracking cookies or ad pixels, and you can have your data deleted by replying to any email we sent you.</p>
+
+    <h2>1. No tracking</h2>
+    <p>This site sets no cookies and loads no analytics, advertising or social-media scripts. The only counters we keep are server-side totals of how many free scans, checkouts and reports happened, with no visitor identity attached.</p>
+
+    <h2>2. What we store</h2>
+    <div class="table-wrap">
+      <table class="table">
+        <thead>
+          <tr><th scope="col">Data</th><th scope="col">Why</th><th scope="col">How long</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <th scope="row">Website address</th>
+            <td>The address you ask us to scan, for free scans and paid audits, and the addresses of the pages the crawler found.</td>
+            <td>Free scan results: 24 hours. Audits: 12 months after the audit.</td>
+          </tr>
+          <tr>
+            <th scope="row">Email address</th>
+            <td>Paid orders only, to send your receipt, your report link and the re-scan reminder. Free scans need no email.</td>
+            <td>As long as the order record, below.</td>
+          </tr>
+          <tr>
+            <th scope="row">Scan results</th>
+            <td>Page addresses, page titles, HTTP status and the axe-core results for each page, including short HTML snippets (up to 600 characters) of the elements that failed.</td>
+            <td>12 months after the audit.</td>
+          </tr>
+          <tr>
+            <th scope="row">Screenshots</th>
+            <td>Small crops of the elements behind the top ten findings, so the report can show you what it means. Free scans embed up to three of these in the result and store them with the cached result.</td>
+            <td>Free scans: 24 hours. Audits: 12 months.</td>
+          </tr>
+          <tr>
+            <th scope="row">Report files</th>
+            <td>The PDF, JSON and CSV built from the findings, kept so your report link keeps working.</td>
+            <td>12 months after the audit.</td>
+          </tr>
+          <tr>
+            <th scope="row">Order data</th>
+            <td>Product, amount, coupon, Stripe session and payment identifiers, the IP address used at checkout (fraud prevention), and for agencies the agency name and uploaded logo.</td>
+            <td>As long as accounting and tax rules require us to keep records of sales.</td>
+          </tr>
+          <tr>
+            <th scope="row">Emails we send</th>
+            <td>Copies of the report-ready, review and credit-code emails, so we can resend them if one goes missing.</td>
+            <td>12 months.</td>
+          </tr>
+          <tr>
+            <th scope="row">Server logs</th>
+            <td>IP address, requested path and time, used for rate limiting free scans and for spotting abuse.</td>
+            <td>30 days.</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    <p>We do not store card numbers (Stripe handles payment), we do not keep copies of your pages beyond the snippets above, and we do not sell or share any of this data for marketing.</p>
+
+    <h2>3. Who else processes data</h2>
+    <ul>
+      <li><strong>Stripe</strong> processes payments and receives your email address and the amount.</li>
+      <li><strong>Resend</strong> delivers our transactional emails when it is configured, and receives your email address and the email content.</li>
+      <li><strong>Anthropic</strong> writes the plain-English narrative for paid audits when it is configured. It receives the list of findings for your site (rule identifiers, page addresses, short HTML snippets and counts) and the site title. It does not receive your email address. When it is not configured, the narrative comes from our built-in dictionary and nothing leaves our server.</li>
+      <li><strong>Our hosting provider</strong> runs the server and its disk, where the database and report files live.</li>
+    </ul>
+
+    <h2>4. Report links</h2>
+    <p>Each report lives at a link containing a random 128-bit token. The link is not listed anywhere, search engines are told not to index report pages, and we only send it to the email address on the order. Anyone you share the link with can view the report, so treat it like the document it contains.</p>
+
+    <h2>5. Your rights</h2>
+    <p>You can ask for a copy of everything we hold about an order, or ask us to delete it, by replying to any email we sent you. We answer within 30 days. Deleting an audit removes its scan results, screenshots and report files; we keep the minimum order record that accounting rules require.</p>
+
+    <h2>6. Security</h2>
+    <p>All traffic to this site is encrypted with HTTPS. Report links are unguessable, the admin area is password-protected, and the scanner refuses to reach private networks. If you believe you have found a security problem, reply to any email we sent you and we will respond quickly.</p>
+
+    <h2>7. Changes</h2>
+    <p>If this policy changes in a way that matters, we update the date at the top and, for changes affecting existing customers, we email the address on the order.</p>
+  <% } %>
+</article>

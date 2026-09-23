@@ -3,7 +3,7 @@ import { fileURLToPath } from "node:url";
 import express, { type ErrorRequestHandler, type Express, type RequestHandler } from "express";
 import { ROOT_DIR, config, ensureDirs, modeLines } from "./config.js";
 import { migrate } from "./db.js";
-import { startRunner } from "./jobs/runner.js";
+import { startRunner, stopRunner } from "./jobs/runner.js";
 import { router as adminRouter } from "./routes/admin.js";
 import { router as creditsRouter } from "./routes/credits.js";
 import { router as marketingRouter } from "./routes/marketing.js";
@@ -159,6 +159,8 @@ function main(): void {
 
   const shutdown = (signal: string): void => {
     console.log(`${signal} received, shutting down`);
+    // Stop picking up new jobs; a running audit is recovered by the next boot.
+    stopRunner();
     server.close(() => process.exit(0));
     setTimeout(() => process.exit(0), 5000).unref();
   };

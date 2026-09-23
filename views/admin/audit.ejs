@@ -1,0 +1,252 @@
+<section class="container section-tight">
+  <p class="eyebrow"><a href="/admin">Admin</a> / Audit</p>
+  <h1 class="break"><%= audit.url %></h1>
+  <p class="muted">
+    <code><%= audit.id %></code>
+    <span class="badge <%= statusBadge(audit.status) %>"><%= audit.status %></span>
+    <%= statusLabel %>
+    <% if (audit.status === "held") { %><strong>Needs review</strong><% } %>
+  </p>
+
+  <% if (notice) { %>
+    <div class="alert alert-<%= notice.kind %>" role="status"><%= notice.text %></div>
+  <% } %>
+  <% if (error) { %>
+    <div class="alert alert-error" role="alert"><%= error %></div>
+  <% } %>
+
+  <div class="admin-actions mb-2">
+    <form method="post" action="/admin/audits/<%= audit.id %>/rerun">
+      <% if (canRerun) { %>
+        <button type="submit" class="btn">Re-run</button>
+      <% } else { %>
+        <button type="submit" class="btn" disabled aria-disabled="true" title="Wait for the running job to finish">Re-run</button>
+      <% } %>
+    </form>
+    <form method="post" action="/admin/audits/<%= audit.id %>/release">
+      <% if (canRelease) { %>
+        <button type="submit" class="btn btn-primary">Release</button>
+      <% } else { %>
+        <button type="submit" class="btn btn-primary" disabled aria-disabled="true" title="Only held audits can be released">Release</button>
+      <% } %>
+    </form>
+    <a class="btn btn-secondary" href="<%= reportUrl %>">Public report page</a>
+    <% if (audit.status === "ready" && audit.pdf_path) { %>
+      <a class="btn" href="<%= reportUrl %>/pdf">PDF</a>
+    <% } %>
+    <% if (openJob) { %>
+      <span class="badge badge-info">job <%= openJob %></span>
+    <% } %>
+  </div>
+
+  <div class="grid grid-2">
+    <div class="card card-flat">
+      <h2 class="card-title" style="font-size:1.15rem;">Details</h2>
+      <dl class="admin-kv">
+        <dt>Email</dt><dd><%= audit.email %></dd>
+        <dt>Tier</dt><dd><%= audit.tier %><% if (audit.white_label) { %> (white-label<%= audit.agency_name ? ", " + audit.agency_name : "" %>)<% } %></dd>
+        <dt>Page limit</dt><dd><%= audit.page_limit %></dd>
+        <dt>Progress</dt><dd><%= audit.progress_pages %> pages, <%= audit.progress_issues %> issues<% if (audit.progress_note) { %>; <%= audit.progress_note %><% } %></dd>
+        <dt>Public link</dt><dd class="break"><a href="<%= reportUrl %>"><%= publicUrl %></a></dd>
+        <% if (audit.order_id) { %><dt>Order</dt><dd><code><%= audit.order_id %></code></dd><% } %>
+        <% if (audit.credit_code_id) { %><dt>Credit code</dt><dd><code><%= audit.credit_code_id %></code></dd><% } %>
+        <% if (original) { %>
+          <dt>Re-scan of</dt><dd><a href="/admin/audits/<%= original.id %>"><%= shortId(original.id) %></a> (<%= formatStamp(original.created_at) %>)</dd>
+        <% } %>
+        <dt>Re-scan used</dt><dd><%= audit.rescan_used ? "yes" : "no" %></dd>
+        <dt>Reminder sent</dt><dd><%= audit.reminder_sent ? "yes" : "no" %></dd>
+        <% if (audit.error) { %><dt>Error</dt><dd class="error-text"><%= audit.error %></dd><% } %>
+      </dl>
+    </div>
+
+    <div class="card card-flat">
+      <h2 class="card-title" style="font-size:1.15rem;">Timing</h2>
+      <dl class="admin-kv">
+        <dt>Created</dt><dd><%= formatStamp(audit.created_at) %></dd>
+        <dt>Started</dt><dd><%= formatStamp(audit.started_at) || "not yet" %></dd>
+        <dt>Finished</dt><dd><%= formatStamp(audit.finished_at) || "not yet" %><% if (duration) { %> (<%= duration %>)<% } %></dd>
+        <dt>Released</dt><dd><%= formatStamp(audit.released_at) || (audit.status === "held" ? "waiting for review" : "n/a") %></dd>
+        <dt>Files</dt>
+        <dd>
+          <% if (audit.pdf_path || audit.json_path || audit.csv_path) { %>
+            <% if (audit.pdf_path) { %><code class="break"><%= audit.pdf_path %></code><br><% } %>
+            <% if (audit.json_path) { %><code class="break"><%= audit.json_path %></code><br><% } %>
+            <% if (audit.csv_path) { %><code class="break"><%= audit.csv_path %></code><% } %>
+          <% } else { %>
+            none yet
+          <% } %>
+        </dd>
+      </dl>
+      <% if (summary) { %>
+        <h3 style="font-size:1rem;">Scan summary</h3>
+        <dl class="admin-kv mb-0">
+          <dt>Pages</dt><dd><%= summary.pagesScanned %> scanned of <%= summary.pagesRequested %> requested, <%= summary.pagesFailed %> failed</dd>
+          <dt>Findings</dt><dd><%= summary.findingsCount %> (<%= summary.totalViolationNodes %> elements)</dd>
+          <dt>By impact</dt><dd><%= summary.byImpact ? Object.keys(summary.byImpact).map((k) => k + " " + summary.byImpact[k]).join(", ") : "" %></dd>
+          <dt>Window</dt><dd><%= formatStamp(summary.scanStartedAt) %> to <%= formatStamp(summary.scanFinishedAt) %></dd>
+        </dl>
+      <% } %>
+    </div>
+  </div>
+
+  <h2 style="font-size:1.25rem;" class="mt-4">Jobs</h2>
+  <% if (jobs.length === 0) { %>
+    <p class="muted">No job rows for this audit.</p>
+  <% } else { %>
+    <div class="table-wrap">
+      <table class="table table-compact">
+        <caption class="visually-hidden">Jobs for this audit</caption>
+        <thead>
+          <tr>
+            <th scope="col">Job</th>
+            <th scope="col">Status</th>
+            <th scope="col" class="num">Attempts</th>
+            <th scope="col">Created</th>
+            <th scope="col">Started</th>
+            <th scope="col">Finished</th>
+            <th scope="col">Error</th>
+          </tr>
+        </thead>
+        <tbody>
+          <% jobs.forEach((job) => { %>
+            <tr>
+              <td><code><%= shortId(job.id) %></code></td>
+              <td><span class="badge <%= statusBadge(job.status) %>"><%= job.status %></span></td>
+              <td class="num"><%= job.attempts %></td>
+              <td><%= formatStamp(job.created_at) %></td>
+              <td><%= formatStamp(job.started_at) %></td>
+              <td><%= formatStamp(job.finished_at) %></td>
+              <td class="break"><%= job.error || "" %></td>
+            </tr>
+          <% }) %>
+        </tbody>
+      </table>
+    </div>
+  <% } %>
+
+  <h2 style="font-size:1.25rem;">Log</h2>
+  <% if (audit.log) { %>
+    <pre class="admin-log"><%= audit.log %></pre>
+  <% } else { %>
+    <p class="muted">Nothing logged yet.</p>
+  <% } %>
+
+  <h2 style="font-size:1.25rem;">Pages (<%= pages.length %>)</h2>
+  <% if (pages.length === 0) { %>
+    <p class="muted">No pages scanned yet.</p>
+  <% } else { %>
+    <div class="table-wrap">
+      <table class="table table-compact">
+        <caption class="visually-hidden">Pages scanned</caption>
+        <thead>
+          <tr>
+            <th scope="col">URL</th>
+            <th scope="col">Viewport</th>
+            <th scope="col" class="num">HTTP</th>
+            <th scope="col">Title</th>
+            <th scope="col" class="num">Violation nodes</th>
+            <th scope="col">Scanned</th>
+            <th scope="col">Error</th>
+          </tr>
+        </thead>
+        <tbody>
+          <% pages.forEach((page) => { %>
+            <tr>
+              <td class="break admin-cell-wide"><%= page.url %></td>
+              <td><%= page.viewport %></td>
+              <td class="num"><%= page.status_code === null ? "" : page.status_code %></td>
+              <td class="break"><%= page.title || "" %></td>
+              <td class="num"><%= page.violation_count %></td>
+              <td><%= formatStamp(page.scanned_at) %></td>
+              <td class="break"><%= page.error || "" %></td>
+            </tr>
+          <% }) %>
+        </tbody>
+      </table>
+    </div>
+  <% } %>
+
+  <h2 style="font-size:1.25rem;">Findings (<%= findings.length %>)</h2>
+  <% if (findings.length === 0) { %>
+    <p class="muted">No findings stored.</p>
+  <% } else { %>
+    <div class="table-wrap">
+      <table class="table table-compact">
+        <caption class="visually-hidden">Ranked findings</caption>
+        <thead>
+          <tr>
+            <th scope="col" class="num">#</th>
+            <th scope="col">Rule</th>
+            <th scope="col">Impact</th>
+            <th scope="col">Confidence</th>
+            <th scope="col">Category</th>
+            <th scope="col" class="num">Pages</th>
+            <th scope="col" class="num">Elements</th>
+            <th scope="col" class="num">Weight</th>
+            <th scope="col" class="num">Score</th>
+            <th scope="col">Example</th>
+            <th scope="col">Screenshot</th>
+          </tr>
+        </thead>
+        <tbody>
+          <% findings.forEach((f) => { %>
+            <tr>
+              <td class="num"><%= f.rank %></td>
+              <td><code><%= f.ruleId %></code><br><span class="small muted"><%= f.help %></span></td>
+              <td><span class="badge badge-<%= f.impact %>"><%= f.impact %></span></td>
+              <td><span class="badge badge-<%= f.confidence %>"><%= f.confidence === "needs_manual" ? "needs manual" : "automated" %></span></td>
+              <td><%= f.category %></td>
+              <td class="num"><%= f.pagesAffected %></td>
+              <td class="num"><%= f.nodesTotal %></td>
+              <td class="num"><%= f.litigationWeight %></td>
+              <td class="num"><%= f.score %></td>
+              <td class="break">
+                <% if (f.examplePageUrl) { %><span class="small"><%= f.examplePageUrl %></span><br><% } %>
+                <% if (f.exampleSelector) { %><code class="small"><%= f.exampleSelector %></code><% } %>
+              </td>
+              <td><%= f.screenshotPath ? "yes" : "" %></td>
+            </tr>
+          <% }) %>
+        </tbody>
+      </table>
+    </div>
+  <% } %>
+
+  <h2 style="font-size:1.25rem;">Narrative</h2>
+  <% if (narrativeMeta) { %>
+    <p class="small muted">
+      Generated by <strong><%= narrativeMeta.generatedBy %></strong><% if (narrativeMeta.model) { %> (<%= narrativeMeta.model %>)<% } %>,
+      <%= narrativeMeta.findings %> finding entr<%= narrativeMeta.findings === 1 ? "y" : "ies" %>.
+      Edit the JSON below and save: it is validated against the narrative schema, stored, and the PDF, JSON and CSV are rebuilt.
+    </p>
+  <% } else { %>
+    <p class="small muted">No narrative stored yet. One is written when the audit reaches the "writing" step; you can also paste a complete narrative JSON here.</p>
+  <% } %>
+  <form method="post" action="/admin/audits/<%= audit.id %>/narrative">
+    <div class="field">
+      <label for="narrative">Narrative JSON</label>
+      <% if (error) { %>
+        <textarea id="narrative" name="narrative" class="admin-narrative" spellcheck="false" aria-invalid="true" aria-describedby="narrative-error"><%= narrativeText %></textarea>
+        <span class="error-text" id="narrative-error"><%= error %></span>
+      <% } else { %>
+        <textarea id="narrative" name="narrative" class="admin-narrative" spellcheck="false"><%= narrativeText %></textarea>
+      <% } %>
+    </div>
+    <button type="submit" class="btn btn-primary">Save narrative</button>
+  </form>
+
+  <h2 style="font-size:1.25rem;" class="mt-4">Emails to <%= audit.email %></h2>
+  <% if (emails.length === 0) { %>
+    <p class="muted">No emails recorded for this address yet.</p>
+  <% } else { %>
+    <ul>
+      <% emails.forEach((mail) => { %>
+        <li>
+          <%= formatStamp(mail.created_at) %>:
+          <% if (outboxEnabled) { %><a href="/outbox/<%= mail.id %>"><%= mail.subject %></a><% } else { %><%= mail.subject %><% } %>
+          <span class="badge"><%= mail.sent_via %></span>
+        </li>
+      <% }) %>
+    </ul>
+  <% } %>
+</section>

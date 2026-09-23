@@ -1,0 +1,54 @@
+<%
+  // Three pricing cards. Expects `pricing` (see pricingLocals() in src/routes/marketing.ts)
+  // and `foundingLeft`; the Agency card carries id="agencies" for the nav link.
+  const seatsLeft = typeof foundingLeft === "number" ? foundingLeft : pricing.foundingLeft;
+%>
+<div class="pricing-grid">
+  <article class="card pricing-card" aria-labelledby="price-single">
+    <h3 class="card-title" id="price-single">Site Audit</h3>
+    <p class="price"><%= pricing.singlePrice %> <small>one time</small></p>
+    <ul class="feature-list">
+      <li>Up to <%= pricing.pageLimitSingle %> pages, desktop and mobile</li>
+      <li>PDF + JSON + CSV</li>
+      <li>Fixes from your own markup</li>
+      <li>Dated remediation record</li>
+      <li>1 free re-scan within 30 days</li>
+    </ul>
+    <a class="btn btn-primary btn-block" href="/order?product=single">Audit my site</a>
+  </article>
+
+  <article class="card pricing-card card-highlight" id="agencies" aria-labelledby="price-pack5">
+    <p class="badge badge-info">Most popular with agencies</p>
+    <h3 class="card-title" id="price-pack5">Agency 5-Pack</h3>
+    <p class="price"><%= pricing.pack5Price %> <small>one time</small></p>
+    <ul class="feature-list">
+      <li>5 audits, share the code with your team</li>
+      <li>Up to <%= pricing.pageLimitPack %> pages per site</li>
+      <li>White-label PDF with your logo</li>
+      <li>Re-scan included per audit</li>
+      <li>Sells your $500-2,000 remediation projects</li>
+    </ul>
+    <a class="btn btn-primary btn-block" href="/order?product=pack5">Get 5 credits</a>
+    <% if (seatsLeft > 0) { %>
+      <p class="founding-note">Founding offer: first <%= pricing.foundingMax %> agencies pay <%= pricing.foundingPrice %> with code <%= pricing.foundingCode %> (<%= seatsLeft %> left)</p>
+    <% } %>
+    <div class="embed-block">
+      <p class="small"><strong>Embed the free scanner on your own site.</strong> Visitors who scan land here with their address prefilled, and you get the lead.</p>
+      <pre class="snippet" id="embed-snippet" tabindex="0"><code><%= pricing.embedSnippet %></code></pre>
+      <button type="button" class="btn btn-sm" data-copy-target="#embed-snippet">Copy snippet</button>
+    </div>
+  </article>
+
+  <article class="card pricing-card" aria-labelledby="price-reviewed">
+    <h3 class="card-title" id="price-reviewed">Reviewed Audit</h3>
+    <p class="price"><%= pricing.reviewedPrice %> <small>one time</small></p>
+    <ul class="feature-list">
+      <li>Everything in Site Audit</li>
+      <li>A human runs keyboard, focus-order and screen-reader spot checks</li>
+      <li>Narrative edited by hand</li>
+      <li>Delivered within 2 business days</li>
+    </ul>
+    <a class="btn btn-primary btn-block" href="/order?product=reviewed">Order a reviewed audit</a>
+  </article>
+</div>
+<p class="disclaimer mt-2">Automated checks find roughly 30-40% of WCAG issues. This is an automated audit plus a manual checklist, not a legal opinion or a compliance certification.</p>

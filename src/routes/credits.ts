@@ -149,7 +149,18 @@ router.post(
       return;
     }
 
-    const audit = startCreditAudit(code, target, values.email);
+    let audit: AuditRow;
+    try {
+      audit = startCreditAudit(code, target, values.email);
+    } catch (err) {
+      // Lost a race for the last credit: the transaction rolled back, show the form again.
+      if (err instanceof HttpError && err.code === "no_credits_left") {
+        errors.credits = err.message;
+        await renderCreditsPage(res, code, values, errors, 400);
+        return;
+      }
+      throw err;
+    }
     res.redirect(`/r/${audit.token}`);
   }),
 );

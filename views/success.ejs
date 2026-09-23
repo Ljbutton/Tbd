@@ -35,8 +35,8 @@
     <% if (creditCode) { %>
       <div class="card">
         <p class="label">Your code</p>
-        <p class="price break"><code><%= creditCode.code %></code></p>
-        <p><strong><%= creditCode.credits_left %> credits left</strong> of <%= creditCode.credits_total %>. Each credit is one white-label audit of up to <%= product.pageLimit %> pages.</p>
+        <p class="price break"><code data-testid="credit-code"><%= creditCode.code %></code></p>
+        <p><strong data-testid="credits-left"><%= creditCode.credits_left %> credits left</strong> of <%= creditCode.credits_total %>. Each credit is one white-label audit of up to <%= product.pageLimit %> pages.</p>
         <p><a class="btn btn-primary btn-lg" href="/credits/<%= creditCode.code %>">Start your first audit</a></p>
         <p class="small muted mb-0">
           Share the link <code><%= baseUrl %>/credits/<%= creditCode.code %></code> with your team; anyone with it can use a credit.
@@ -58,7 +58,7 @@
     <% if (audit) { %>
       <div class="card">
         <p>We're crawling <span class="break"><strong><%= audit.url %></strong></span> at desktop and mobile sizes. Most audits finish in 5-10 minutes.</p>
-        <p><a class="btn btn-primary btn-lg" href="/r/<%= audit.token %>">Open your report page</a></p>
+        <p><a class="btn btn-primary btn-lg" href="/r/<%= audit.token %>" data-testid="report-link">Open your report page</a></p>
         <p class="small muted">Bookmark it: <code class="break"><%= baseUrl %>/r/<%= audit.token %></code>. The page updates itself while the scan runs.</p>
         <% if (order.product === "reviewed") { %>
           <p class="small">After the automated scan, a person checks your site by hand and edits the write-up. Expect the finished report within 2 business days.</p>

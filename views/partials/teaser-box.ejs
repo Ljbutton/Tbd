@@ -1,0 +1,25 @@
+<%
+  // Free single-page scan box. Works as a plain form (POST /api/teaser?format=html)
+  // and is enhanced by public/app.js (fetch JSON, render the result card in place).
+  const boxPrefill = typeof prefillUrl === "string" ? prefillUrl : "";
+  const boxLimit = typeof teaserRateLimit === "number" && teaserRateLimit > 0 ? teaserRateLimit : 5;
+  const boxPageLimit = typeof pageLimitSingle === "number" && pageLimitSingle > 0 ? pageLimitSingle : 15;
+  const boxHeading = typeof heading === "string" && heading.trim() !== "" ? heading : "Scan one page free";
+%>
+<div class="teaser-box card" id="scan">
+  <h2 class="teaser-box__title"><%= boxHeading %></h2>
+  <form class="teaser-form" method="post" action="/api/teaser?format=html" novalidate
+        data-teaser-form data-order-url="/order?product=single" data-page-limit="<%= boxPageLimit %>">
+    <input type="hidden" name="format" value="html">
+    <label for="teaser-url">Your page address</label>
+    <div class="teaser-form__row">
+      <input type="url" id="teaser-url" name="url" placeholder="https://yourstore.com" value="<%= boxPrefill %>"
+             required autocomplete="url" inputmode="url" spellcheck="false" maxlength="2048"
+             aria-describedby="teaser-hint">
+      <button type="submit" class="btn btn-primary btn-lg" data-teaser-submit>Scan one page free</button>
+    </div>
+    <p class="small muted teaser-form__hint" id="teaser-hint">No email needed. <%= boxLimit %> free scans per hour.</p>
+    <p class="teaser-form__status" data-teaser-status role="status" aria-live="polite"></p>
+  </form>
+  <div class="teaser-result" id="teaser-result" data-teaser-result hidden></div>
+</div>

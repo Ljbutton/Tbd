@@ -1,0 +1,72 @@
+<%
+  const platformLabels = {
+    shopify: "Shopify",
+    wordpress: "WordPress",
+    webflow: "Webflow",
+    squarespace: "Squarespace",
+    wix: "Wix",
+    unknown: "Guide",
+  };
+  const eyebrow = platformLabels[page.platform] || "Guide";
+  const steps = Array.isArray(page.checklist) ? page.checklist : [];
+  const hasSample = typeof samplePdfExists === "boolean" ? samplePdfExists : true;
+%>
+<article class="container section seo-page">
+  <p class="eyebrow"><%= eyebrow %></p>
+  <h1><%= page.h1 %></h1>
+  <p class="lead"><%= page.intro %></p>
+
+  <div class="mt-4">
+    <%- include("partials/teaser-box", { heading: "Scan one page of your site free" }) %>
+  </div>
+
+  <% if (steps.length > 0) { %>
+    <section class="mt-4" aria-labelledby="checklist-heading">
+      <h2 id="checklist-heading">The <%= steps.length %>-step checklist</h2>
+      <ol class="checklist">
+        <% steps.forEach((step) => { %>
+          <li>
+            <strong><%= step.title %></strong>
+            <%= step.detail %>
+          </li>
+        <% }) %>
+      </ol>
+      <p class="alert alert-info">This checklist is practical guidance, not legal advice. AccessAudit is an automated testing tool, not a law firm. Talk to a lawyer about your own situation.</p>
+    </section>
+  <% } %>
+
+  <section class="mt-4" aria-labelledby="tips-heading">
+    <h2 id="tips-heading"><%= page.tipsHeading %></h2>
+    <ul class="tips">
+      <% page.platformTips.forEach((tip) => { %>
+        <li><%= tip %></li>
+      <% }) %>
+    </ul>
+  </section>
+
+  <section class="mt-4" aria-labelledby="sample-heading">
+    <h2 id="sample-heading">What the report looks like</h2>
+    <p>Every audit produces a PDF with an executive summary, a ranked issue table, a detail block per finding with before/after code, the manual checklist and the list of pages scanned.</p>
+    <p>
+      <a class="btn btn-secondary" href="/sample-report.pdf">See the sample PDF report</a>
+      <% if (!hasSample) { %><span class="small muted">(not generated on this server yet; run <code>npm run sample</code>)</span><% } %>
+    </p>
+  </section>
+
+  <section class="mt-4" id="pricing" aria-labelledby="pricing-heading">
+    <h2 id="pricing-heading">Pricing</h2>
+    <%- include("partials/pricing-cards") %>
+  </section>
+
+  <section class="mt-4" id="faq" aria-labelledby="faq-heading">
+    <h2 id="faq-heading">Questions</h2>
+    <div class="faq-list">
+      <% page.faq.forEach((entry) => { %>
+        <details>
+          <summary><%= entry.q %></summary>
+          <p><%= entry.a %></p>
+        </details>
+      <% }) %>
+    </div>
+  </section>
+</article>

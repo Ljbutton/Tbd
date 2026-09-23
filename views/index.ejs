@@ -1,0 +1,151 @@
+<%
+  const faqEntries = Array.isArray(faq) ? faq : [];
+  const hasSample = typeof samplePdfExists === "boolean" ? samplePdfExists : true;
+%>
+<section class="hero">
+  <div class="container hero__inner">
+    <div class="hero__copy">
+      <p class="eyebrow">Whole-site WCAG 2.2 audit</p>
+      <h1>Find out what an ADA lawsuit would find on your website. Before a lawyer does.</h1>
+      <p class="lead">Paste your URL. In about 10 minutes you get a plain-English accessibility audit of up to 15 pages, ranked by lawsuit risk, with copy-paste fixes taken from your own code. $49, one time. No overlay, no subscription.</p>
+      <ul class="hero__points">
+        <li>Desktop and mobile</li>
+        <li>Before/after code snippets</li>
+        <li>PDF, JSON and CSV</li>
+        <li>Free re-scan within 30 days</li>
+      </ul>
+    </div>
+    <div class="hero__scan">
+      <%- include("partials/teaser-box", { heading: "Scan one page free" }) %>
+    </div>
+  </div>
+</section>
+
+<section class="stats-strip" aria-labelledby="stats-heading">
+  <div class="container">
+    <h2 class="visually-hidden" id="stats-heading">Why this matters</h2>
+    <div class="grid grid-3">
+      <div class="stat">
+        <span class="stat-value">4,928</span>
+        <span class="stat-label">ADA website lawsuits filed in the US in 2025 (+37% vs 2024)</span>
+        <span class="stat-source">Source: UsableNet, 2025 year-end digital accessibility lawsuit report</span>
+      </div>
+      <div class="stat">
+        <span class="stat-value">~70%</span>
+        <span class="stat-label">target e-commerce sites, many under $25M revenue</span>
+        <span class="stat-source">Source: UsableNet lawsuit tracking, industry breakdown by defendant</span>
+      </div>
+      <div class="stat">
+        <span class="stat-value">$5,000-15,000</span>
+        <span class="stat-label">typical demand-letter settlement, before fixing anything</span>
+        <span class="stat-source">Source: settlement ranges published by defense law firms; varies by state and firm</span>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="section" id="what-you-get" aria-labelledby="what-heading">
+  <div class="container">
+    <p class="eyebrow">What you get</p>
+    <h2 id="what-heading">One report your developer, your boss and your lawyer can all read</h2>
+    <div class="grid grid-3">
+      <div class="card card-flat">
+        <h3>Whole-site crawl</h3>
+        <p>Up to 15 pages, desktop + mobile. We follow your own links the way a visitor would and scan every page at both sizes.</p>
+      </div>
+      <div class="card card-flat">
+        <h3>Ranked by lawsuit risk</h3>
+        <p>Impact x how many pages x what complaints actually cite. The top of the list is what a plaintiff's firm would find first.</p>
+      </div>
+      <div class="card card-flat">
+        <h3>Fixes from your own code</h3>
+        <p>Before/after snippets built from the exact markup that failed, ready to paste into your theme or template.</p>
+      </div>
+      <div class="card card-flat">
+        <h3>Client-ready PDF</h3>
+        <p>A branded report that reads in plain English, with a summary up front and the technical detail behind it.</p>
+      </div>
+      <div class="card card-flat">
+        <h3>JSON/CSV for your ticket tracker</h3>
+        <p>Every finding with page, selector, impact and effort, ready for Jira, Linear, Trello or a spreadsheet.</p>
+      </div>
+      <div class="card card-flat">
+        <h3>Free re-scan within 30 days with a before/after record</h3>
+        <p>Fix what you can, re-scan once for free and get a dated remediation record showing what changed.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="section section-alt" id="sample" aria-labelledby="sample-heading">
+  <div class="container">
+    <p class="eyebrow">Sample</p>
+    <h2 id="sample-heading">See a real report</h2>
+    <p class="lead">This is the actual PDF a $49 audit produces, generated against a demo store with the usual problems.</p>
+    <% if (!hasSample) { %>
+      <p class="alert alert-warning">The sample PDF has not been generated on this server yet. Run <code>npm run sample</code> to create it.</p>
+    <% } %>
+    <iframe class="embed-frame sample-frame" src="/sample-report.pdf" title="Sample AccessAudit report (PDF)" height="600" loading="lazy"></iframe>
+    <p class="mt-2"><a href="/sample-report.pdf" download="accessaudit-sample-report.pdf">Download the sample PDF</a></p>
+  </div>
+</section>
+
+<section class="section" id="pricing" aria-labelledby="pricing-heading">
+  <div class="container">
+    <p class="eyebrow">Pricing</p>
+    <h2 id="pricing-heading">One-time payment. No subscription.</h2>
+    <p class="lead">Pick the audit that fits, pay once, and your report page stays up permanently.</p>
+    <%- include("partials/pricing-cards") %>
+  </div>
+</section>
+
+<section class="section section-alt" id="compare" aria-labelledby="compare-heading">
+  <div class="container">
+    <p class="eyebrow">Alternatives</p>
+    <h2 id="compare-heading">Why not a free checker or an overlay?</h2>
+    <div class="compare-grid">
+      <div class="card card-flat">
+        <h3>Free checkers (WAVE, Lighthouse)</h3>
+        <p>One page at a time, raw rule IDs, nothing to hand to a client.</p>
+      </div>
+      <div class="card card-flat">
+        <h3>Overlay widgets</h3>
+        <p>The FTC fined accessiBe $1M in 2025 for claiming its widget makes any site conform to WCAG; hundreds of overlay customers were still sued.</p>
+      </div>
+      <div class="card card-flat">
+        <h3>Manual audits</h3>
+        <p>$1,500-5,500 and 2-4 weeks.</p>
+      </div>
+    </div>
+    <div class="card compare-us">
+      <h3>AccessAudit</h3>
+      <p class="mb-0">Whole site, prioritized, plain English, $49, 10 minutes. Plus the honest list of what still needs a human.</p>
+    </div>
+  </div>
+</section>
+
+<section class="section" id="faq" aria-labelledby="faq-heading">
+  <div class="container section-narrow">
+    <p class="eyebrow">FAQ</p>
+    <h2 id="faq-heading">Questions people ask before they buy</h2>
+    <div class="faq-list">
+      <% faqEntries.forEach((entry) => { %>
+        <details>
+          <summary><%= entry.q %></summary>
+          <p><%= entry.a %></p>
+        </details>
+      <% }) %>
+    </div>
+  </div>
+</section>
+
+<section class="cta-band" aria-labelledby="cta-heading">
+  <div class="container">
+    <h2 id="cta-heading">Know before a lawyer does</h2>
+    <p>Free scan of one page, or the whole site for $49.</p>
+    <div class="row" style="justify-content:center">
+      <a class="btn btn-light btn-lg" href="#scan">Scan one page free</a>
+      <a class="btn btn-light btn-lg" href="/order?product=single">Get the full-site audit &mdash; $49</a>
+    </div>
+  </div>
+</section>

@@ -1,0 +1,132 @@
+<section class="container section-tight">
+  <p class="eyebrow">Admin</p>
+  <h1>Dashboard</h1>
+
+  <% if (notice) { %>
+    <div class="alert alert-<%= notice.kind %>" role="status"><%= notice.text %></div>
+  <% } %>
+
+  <div class="card card-flat mb-2">
+    <h2 class="card-title" style="font-size:1.15rem;">Modes</h2>
+    <ul class="mb-2">
+      <% modes.forEach((line) => { %>
+        <li><code><%= line %></code></li>
+      <% }) %>
+    </ul>
+    <% if (missing.length > 0) { %>
+      <div class="alert alert-warning mb-0" role="status">
+        <strong>Missing environment variables:</strong>
+        <% missing.forEach((name, i) => { %><code><%= name %></code><%= i < missing.length - 1 ? ", " : "" %><% }) %>.
+        The app keeps running in test mode for each integration that is unset.
+      </div>
+    <% } else { %>
+      <p class="mb-0 muted">Every integration is configured.</p>
+    <% } %>
+    <p class="small muted mt-2 mb-0">
+      Queue: <strong><%= queue.running %></strong> running, <strong><%= queue.queued %></strong> queued.
+      <% if (heldCount > 0) { %> <strong><%= heldCount %></strong> audit<%= heldCount === 1 ? "" : "s" %> held for review.<% } %>
+      <% if (outboxEnabled) { %> Emails are stored in the <a href="/outbox">outbox</a>.<% } %>
+    </p>
+  </div>
+
+  <h2 style="font-size:1.25rem;">Funnel, last <%= funnelDays %> days</h2>
+  <div class="admin-funnel mb-2">
+    <% funnelTypes.forEach((type) => { %>
+      <div class="stat">
+        <span class="stat-value"><%= funnel[type] || 0 %></span>
+        <span class="stat-label"><%= type.replace(/_/g, " ") %></span>
+      </div>
+    <% }) %>
+  </div>
+
+  <h2 style="font-size:1.25rem;">Audits (last <%= listLimit %>)</h2>
+  <% if (audits.length === 0) { %>
+    <p class="muted">No audits yet.</p>
+  <% } else { %>
+    <div class="table-wrap">
+      <table class="table table-compact">
+        <caption class="visually-hidden">Most recent audits</caption>
+        <thead>
+          <tr>
+            <th scope="col">Website</th>
+            <th scope="col">Tier</th>
+            <th scope="col">Status</th>
+            <th scope="col" class="num">Pages</th>
+            <th scope="col" class="num">Issues</th>
+            <th scope="col">Created</th>
+            <th scope="col">Detail</th>
+            <th scope="col">Public link</th>
+          </tr>
+        </thead>
+        <tbody>
+          <% audits.forEach((audit) => { %>
+            <tr class="<%= audit.status === "held" ? "row-highlight" : "" %>">
+              <td class="break admin-cell-wide">
+                <%= audit.url %>
+                <% if (audit.rescan_of) { %><span class="badge badge-info">re-scan</span><% } %>
+                <% if (audit.white_label) { %><span class="badge">white-label</span><% } %>
+              </td>
+              <td><%= audit.tier %></td>
+              <td>
+                <span class="badge <%= statusBadge(audit.status) %>"><%= audit.status %></span>
+                <% if (audit.status === "held") { %><strong>Needs review</strong><% } %>
+              </td>
+              <td class="num"><%= audit.progress_pages %> / <%= audit.page_limit %></td>
+              <td class="num"><%= audit.progress_issues %></td>
+              <td><%= formatStamp(audit.created_at) %></td>
+              <td><a href="/admin/audits/<%= audit.id %>"><%= shortId(audit.id) %></a></td>
+              <td><a href="/r/<%= audit.token %>">/r/<%= audit.token %></a></td>
+            </tr>
+          <% }) %>
+        </tbody>
+      </table>
+    </div>
+  <% } %>
+
+  <h2 style="font-size:1.25rem;">Orders (last <%= listLimit %>)</h2>
+  <% if (orders.length === 0) { %>
+    <p class="muted">No orders yet.</p>
+  <% } else { %>
+    <div class="table-wrap">
+      <table class="table table-compact">
+        <caption class="visually-hidden">Most recent orders</caption>
+        <thead>
+          <tr>
+            <th scope="col">Order</th>
+            <th scope="col">Date</th>
+            <th scope="col">Email</th>
+            <th scope="col">Product</th>
+            <th scope="col" class="num">Amount</th>
+            <th scope="col">Status</th>
+            <th scope="col">Paid via</th>
+            <th scope="col">Action</th>
+          </tr>
+        </thead>
+        <tbody>
+          <% orders.forEach((order) => { %>
+            <tr>
+              <td><code title="<%= order.id %>"><%= shortId(order.id) %></code></td>
+              <td><%= formatStamp(order.created_at) %></td>
+              <td class="break"><%= order.email %></td>
+              <td>
+                <%= order.product %>
+                <% if (order.coupon) { %><span class="badge badge-info"><%= order.coupon %></span><% } %>
+                <% if (order.agency_name) { %><span class="small muted break"><%= order.agency_name %></span><% } %>
+              </td>
+              <td class="num"><%= formatUsd(order.amount_cents) %></td>
+              <td><span class="badge <%= statusBadge(order.status) %>"><%= order.status %></span></td>
+              <td><%= order.paid_via || "" %></td>
+              <td>
+                <% if (order.status === "pending") { %>
+                  <form class="admin-inline-form" method="post" action="/admin/orders/<%= order.id %>/mark-paid">
+                    <button type="submit" class="btn btn-sm">Mark paid</button>
+                  </form>
+                <% } %>
+              </td>
+            </tr>
+          <% }) %>
+        </tbody>
+      </table>
+    </div>
+  <% } %>
+</section>

@@ -1,0 +1,211 @@
+[
+  {
+    "slug": "shopify-accessibility-audit",
+    "platform": "shopify",
+    "title": "Shopify accessibility audit: WCAG scan of your store in 10 minutes",
+    "metaDescription": "Scan your Shopify store for WCAG 2.2 issues across up to 15 pages, ranked by lawsuit risk, with copy-paste fixes for your theme. $49, one time, no overlay.",
+    "h1": "Shopify accessibility audit",
+    "intro": "Shopify stores are the most common target of ADA website lawsuits because they sell things, and most of the issues we find live in the theme: product images without alt text, low-contrast sale prices, icon buttons with no name, and forms a screen reader cannot follow. AccessAudit crawls your store the way a shopper would, scans up to 15 pages at desktop and mobile sizes, and hands you a plain-English report with before/after snippets taken from your own Liquid output.",
+    "tipsHeading": "Fixing the usual Shopify issues",
+    "platformTips": [
+      "Alt text for product images is set per image under Products > Media in your Shopify admin, not in the theme. Describe the product, not the file name, and leave purely decorative images with empty alt text.",
+      "Most theme buttons that fail our button-name check are icon-only cart, search and menu buttons in header.liquid. Add a visually hidden span or an aria-label that says what the button does.",
+      "Sale prices, badges and announcement bars are the usual contrast failures. Check your theme's color settings against a 4.5:1 ratio before you change any code.",
+      "Third-party apps inject their own markup (reviews, pop-ups, chat). Our report names the page and the element that failed so you can tell an app problem from a theme problem.",
+      "Run the free re-scan after your theme edits are live. Changes in an unpublished theme are invisible to the scanner."
+    ],
+    "faq": [
+      {
+        "q": "Does this work with Shopify Plus and custom themes?",
+        "a": "Yes. We scan the live storefront in a real browser, so it does not matter which plan or theme you use, or whether the theme came from the Shopify Theme Store or an agency."
+      },
+      {
+        "q": "Will you scan my checkout?",
+        "a": "The Shopify checkout lives on a separate domain the crawler cannot reach without an order in progress. We scan your product, collection, cart, content and policy pages; the report's manual checklist walks you through testing checkout with a keyboard and a screen reader."
+      },
+      {
+        "q": "Can I fix these issues without a developer?",
+        "a": "Alt text, contrast settings and most button labels can be fixed in the admin or the theme editor. Anything that needs a template change comes with a before/after snippet you can hand to your theme developer."
+      }
+    ]
+  },
+  {
+    "slug": "wordpress-accessibility-audit",
+    "platform": "wordpress",
+    "title": "WordPress accessibility audit: find WCAG issues in your theme and plugins",
+    "metaDescription": "Automated WCAG 2.2 audit of up to 15 pages of your WordPress site, ranked by lawsuit risk, with copy-paste fixes. $49, one time. Works with any theme or page builder.",
+    "h1": "WordPress accessibility audit",
+    "intro": "WordPress powers more websites than any other platform, and its accessibility problems come from three places: the theme, the plugins, and the content editors add every day. AccessAudit scans up to 15 pages of your live site at desktop and mobile sizes, tells you which page and element failed each check, and gives you the corrected markup so you can tell a theme bug from a plugin bug from a missing alt text.",
+    "tipsHeading": "Fixing the usual WordPress issues",
+    "platformTips": [
+      "Alt text lives in the Media Library. Editing it there fixes every place the image is used; editing it inside one post does not.",
+      "Page builders such as Elementor, Divi and WPBakery often output headings for styling rather than structure. Use the builder's heading level control so each page reads h1, h2, h3 in order.",
+      "Contact Form 7, WPForms and Gravity Forms all support real labels. The unlabeled inputs we find usually come from a form styled to hide its labels; use the builder's screen-reader-only label option instead of deleting the label.",
+      "Cookie banners, sliders and chat widgets from plugins are the usual source of keyboard traps and unnamed buttons. Our report names the element so you can identify the plugin.",
+      "Set the site language under Settings > General. Many themes only output the html lang attribute when it is set there."
+    ],
+    "faq": [
+      {
+        "q": "Do you scan the WordPress admin?",
+        "a": "No. We scan what visitors see. Logged-in pages, the block editor and wp-admin are out of scope and are not what lawsuits cite."
+      },
+      {
+        "q": "Will an accessibility plugin fix these?",
+        "a": "Plugins that add an overlay or toolbar do not change the underlying markup and have not stopped lawsuits. Plugins that help you write alt text or check contrast inside the editor are useful, and our report tells you where to point them."
+      },
+      {
+        "q": "Does it work with WooCommerce?",
+        "a": "Yes. Shop, product, cart and account pages are scanned like any other page, and the report shows which findings sit in WooCommerce templates versus your theme."
+      }
+    ]
+  },
+  {
+    "slug": "webflow-accessibility-audit",
+    "platform": "webflow",
+    "title": "Webflow accessibility audit: WCAG scan for designers and agencies",
+    "metaDescription": "Scan a Webflow site for WCAG 2.2 issues across up to 15 pages, ranked by lawsuit risk, with fixes you can apply in the Designer. $49, or white-label audits for agencies.",
+    "h1": "Webflow accessibility audit",
+    "intro": "Webflow gives designers total control over the markup, which means accessibility depends entirely on the choices made in the Designer: which element is a heading, whether a div is really a button, whether the hero text passes contrast, and whether every image has alt text. AccessAudit scans your published site, up to 15 pages at desktop and mobile, and shows you exactly which element on which page needs a change, so you can fix it in the Designer without guessing.",
+    "tipsHeading": "Fixing the usual Webflow issues",
+    "platformTips": [
+      "Use the element settings panel to give every link block and button a text label or an aria-label. A div with a click interaction is not a button to a screen reader.",
+      "Set heading levels in the element settings, not with class names. Visual size is a style choice; heading level is structure.",
+      "Alt text is set per image in the asset panel. Mark images that carry no information as decorative.",
+      "Interactions that open menus and modals should move keyboard focus. Test with the Tab key on the published site; the Designer preview does not show focus behavior faithfully.",
+      "Check the language setting under Project Settings. Webflow only writes the html lang attribute when it is set."
+    ],
+    "faq": [
+      {
+        "q": "Can I use this for client sites?",
+        "a": "Yes. The Agency 5-Pack gives you five audits at up to 30 pages each with a white-label PDF carrying your logo, plus a free re-scan per audit to show the client what you fixed."
+      },
+      {
+        "q": "Do you scan the Webflow Editor?",
+        "a": "No. We scan the published site only, exactly as visitors and lawsuit filers see it."
+      },
+      {
+        "q": "What about Webflow Ecommerce?",
+        "a": "Product, category and cart pages are scanned like any other page. The hosted checkout is out of scope; the report includes manual steps for testing it."
+      }
+    ]
+  },
+  {
+    "slug": "squarespace-accessibility-audit",
+    "platform": "squarespace",
+    "title": "Squarespace accessibility audit: check your site against WCAG 2.2",
+    "metaDescription": "Automated WCAG 2.2 audit of up to 15 pages of your Squarespace site, ranked by lawsuit risk, with plain-English fixes. $49, one time, no overlay.",
+    "h1": "Squarespace accessibility audit",
+    "intro": "Squarespace templates handle a lot of accessibility for you, but the parts you control are where lawsuits start: image alt text, heading order across sections, low-contrast text over background images, and buttons or links named only by an icon. AccessAudit scans up to 15 pages of your live site at desktop and mobile sizes, ranks what it finds, and tells you which setting or block to change.",
+    "tipsHeading": "Fixing the usual Squarespace issues",
+    "platformTips": [
+      "Alt text for images is set in each image block's settings. Gallery images take it from the caption unless you set it explicitly.",
+      "Text over background images is the most common contrast failure. Add an overlay color or darken the image in the section background settings.",
+      "Squarespace sets heading levels per text block. Use Heading 1 once per page and step down in order rather than picking sizes for looks.",
+      "Social icon links and cart icons need accessible names. Use the built-in social links block, which labels them, instead of a custom code block.",
+      "Custom CSS and code injection can undo the template's defaults. If a finding points at markup you do not recognize, check Settings > Advanced > Code Injection."
+    ],
+    "faq": [
+      {
+        "q": "Can I fix these without touching code?",
+        "a": "Most findings on Squarespace are settings: alt text, colors, heading levels, link text. Findings that need code come with a before/after snippet for the code injection panel or a developer."
+      },
+      {
+        "q": "Do you scan member areas or checkout?",
+        "a": "No. Member-only pages and the hosted checkout are not reachable by the crawler; the report's manual checklist covers testing them by hand."
+      },
+      {
+        "q": "Which template versions are supported?",
+        "a": "Both 7.0 and 7.1 sites are scanned the same way, in a real browser, from the outside."
+      }
+    ]
+  },
+  {
+    "slug": "accessibe-alternative",
+    "platform": "unknown",
+    "title": "accessiBe alternative: an audit that fixes your code instead of hiding it",
+    "metaDescription": "Looking for an accessiBe alternative? AccessAudit finds WCAG issues across your whole site and gives you the corrected code. No overlay, no subscription, $49 one time.",
+    "h1": "An accessiBe alternative that fixes the site, not the symptom",
+    "intro": "In 2025 the FTC ordered accessiBe to pay $1 million over claims that its widget could make any website conform to WCAG on its own. Overlay widgets change how a page looks and behaves for some users, but the markup underneath stays broken, and hundreds of sites running overlays have been sued anyway. AccessAudit does the opposite: it scans up to 15 pages of your site, ranks the problems by how often they appear in complaints, and gives you the corrected markup so the fix lives in your code.",
+    "tipsHeading": "What to do instead of an overlay",
+    "platformTips": [
+      "Remove the overlay script before you scan. Overlays add ARIA attributes at runtime that can mask or create issues, so results only reflect your real site once it is gone.",
+      "Start with the findings that carry the most weight in complaints: image alt text, contrast, form labels, button and link names.",
+      "Fix issues in your theme or templates so every page inherits the fix. The report shows which elements repeat across pages.",
+      "Run the free re-scan within 30 days to get a dated before/after record that shows the work was done.",
+      "Use the manual checklist at the end of the report for the things no scanner or widget can judge: focus order, screen-reader flow through checkout, alt text quality."
+    ],
+    "faq": [
+      {
+        "q": "Is AccessAudit a widget I install?",
+        "a": "No. Nothing is installed on your site. You paste a URL, we scan it from the outside and send you a report. Your site is unchanged until you or your developer apply the fixes."
+      },
+      {
+        "q": "Why not keep the overlay as extra protection?",
+        "a": "Overlays have not stopped lawsuits. Plaintiffs' firms test the underlying markup, and courts look at what the site's code actually does. An overlay can also interfere with the assistive technology your visitors already use."
+      },
+      {
+        "q": "Does AccessAudit make my site accessible?",
+        "a": "It tells you what is wrong, in order of priority, with the corrected code. You or your developer make the changes. Automated checks find roughly 30-40% of WCAG issues; the report ends with a manual checklist for the rest."
+      }
+    ]
+  },
+  {
+    "slug": "ada-demand-letter-checklist",
+    "platform": "unknown",
+    "title": "ADA website demand letter: a 7-step checklist for the first 48 hours",
+    "metaDescription": "Received an ADA website accessibility demand letter? Seven practical steps: do not ignore it, note the deadline, skip the overlay, run an audit, document fixes, talk to a lawyer, respond on time.",
+    "h1": "You got an ADA website demand letter. Now what?",
+    "intro": "Thousands of small businesses receive a letter every year from a law firm claiming their website is not accessible to people with disabilities and demanding a settlement. The letters follow a pattern, and so does the sensible response. This checklist is what we tell customers who write to us in a panic. It is practical guidance from people who build accessibility tooling, not legal advice; step six is to talk to a lawyer.",
+    "checklist": [
+      {
+        "title": "Do not ignore it",
+        "detail": "A demand letter is usually the step before a filed complaint. Silence is read as an invitation to file, and a filed case costs more to resolve than a letter."
+      },
+      {
+        "title": "Note every date",
+        "detail": "Write down the date you received the letter, the response deadline it names, and the date the firm says it tested your site. Keep the envelope and any email headers."
+      },
+      {
+        "title": "Do not install an overlay widget",
+        "detail": "Adding an accessibility widget after a letter arrives does not fix the issues the firm found, and overlays have been cited in later complaints as evidence that the underlying site was left broken."
+      },
+      {
+        "title": "Run an audit today",
+        "detail": "Get a dated, page-by-page list of what an automated scan finds on your site, so you know whether the letter's claims are accurate and what fixing them involves. Save the report."
+      },
+      {
+        "title": "Fix and document",
+        "detail": "Start with the highest-ranked issues, keep a log of what changed and when, and re-scan so you have a dated before/after record. Documented good-faith fixes matter in any negotiation."
+      },
+      {
+        "title": "Talk to a lawyer",
+        "detail": "A lawyer who has handled web accessibility claims can tell you what the letter is worth, how these firms typically settle, and whether your state has rules that affect the claim. Bring your audit and your fix log."
+      },
+      {
+        "title": "Respond by the deadline",
+        "detail": "Have your lawyer respond in writing before the date in the letter, with the audit and remediation record attached. A documented, in-progress fix is a stronger position than a promise."
+      }
+    ],
+    "tipsHeading": "What the letter usually cites",
+    "platformTips": [
+      "Images without alt text, unlabeled form fields, low-contrast text and unnamed buttons or links appear in the large majority of complaints. They are also the easiest to find with automated tools, which is why plaintiffs' firms use them.",
+      "Most letters name a handful of pages: the home page, a product or service page, contact and checkout. Scan those first.",
+      "Firms typically test in a desktop browser with a screen reader. Mobile issues show up less often in letters but count just the same.",
+      "A letter that quotes WCAG success criteria by number (1.1.1, 1.4.3, 2.4.4) is describing the same checks our report maps each finding to."
+    ],
+    "faq": [
+      {
+        "q": "How much do these letters typically settle for?",
+        "a": "Published ranges from defense firms run from a few thousand dollars to the mid five figures, before the cost of fixing the site. Your lawyer can give you a number for your situation; we cannot."
+      },
+      {
+        "q": "Will fixing the site make the letter go away?",
+        "a": "Not by itself, but a dated remediation record changes the conversation. Firms want a settlement; a business that can show the issues are being fixed has more leverage."
+      },
+      {
+        "q": "Is this legal advice?",
+        "a": "No. AccessAudit is an automated testing tool. It is not a law firm and does not provide legal advice. This page describes practical steps; the decisions belong to you and your lawyer."
+      }
+    ]
+  }
+]
