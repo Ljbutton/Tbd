@@ -7,9 +7,15 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import type { AuditSummary, Narrative } from "../src/types.js";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const OUTPUT = path.join(ROOT, "public", "sample-report.pdf");
+// A picture of the report for the landing page: phone browsers often refuse to
+// render a PDF inside an iframe, so the page shows this image and links to the PDF.
+const PREVIEW = path.join(ROOT, "public", "sample-report-preview.png");
+const PREVIEW_WIDTH = 816; // Letter width at 96 dpi
+const PREVIEW_HEIGHT = 1056; // Letter height at 96 dpi
 const SAMPLE_EMAIL = "sample@example.com";
 const SAMPLE_PAGE_LIMIT = 6;
 const SAMPLE_TOKEN = "sample";
@@ -67,11 +73,62 @@ async function main(): Promise<void> {
     fs.copyFileSync(audit.pdf_path, OUTPUT);
     const size = fs.statSync(OUTPUT).size;
     console.log(`sample: wrote ${path.relative(ROOT, OUTPUT)} (${Math.round(size / 1024)} KB) in ${Math.round((Date.now() - started) / 1000)}s`);
+
+    await writePreview(created.id);
+    const previewSize = fs.statSync(PREVIEW).size;
+    console.log(`sample: wrote ${path.relative(ROOT, PREVIEW)} (${Math.round(previewSize / 1024)} KB)`);
   } finally {
     clearTimeout(guard);
     await closeBrowser();
     await fixture.close();
     fs.rmSync(dataDir, { recursive: true, force: true });
+  }
+}
+
+// Renders the same HTML the PDF was made from and photographs one Letter-sized
+// page of it, starting at the executive summary (the report's first page break)
+// because that page says more about the product than the cover does.
+async function writePreview(auditId: string): Promise<void> {
+  const { findingsForAudit, getAudit, pagesForAudit } = await import("../src/audits.js");
+  const { renderReportHtml } = await import("../src/report/render.js");
+  const { newScanContext } = await import("../src/scan/browser.js");
+
+  const audit = getAudit(auditId);
+  if (!audit?.summary_json || !audit.narrative_json) throw new Error("sample: summary or narrative missing for the preview");
+  const html = renderReportHtml({
+    audit,
+    findings: findingsForAudit(auditId),
+    narrative: JSON.parse(audit.narrative_json) as Narrative,
+    summary: JSON.parse(audit.summary_json) as AuditSummary,
+    delta: null,
+    mode: "pdf",
+    pages: pagesForAudit(auditId),
+  });
+
+  const context = await newScanContext("desktop");
+  try {
+    const page = await context.newPage();
+    await page.setViewportSize({ width: PREVIEW_WIDTH, height: PREVIEW_HEIGHT });
+    // Screen rendering ignores the PDF's @page margins, so give the picture the
+    // margins a printed page would have: side padding on the body and top
+    // padding inside the first page-broken section (the executive summary), so
+    // the clip starts on that section and shows no sliver of the cover above it.
+    const margin = 28;
+    const pageStyle = `<style>body{padding:0 ${margin}px !important}.report .page-break{padding-top:${margin}px !important}</style>`;
+    await page.setContent(html.replace("</head>", `${pageStyle}</head>`), { waitUntil: "load" });
+    await page.emulateMedia({ media: "print" });
+    const summaryTop = await page
+      .locator(".page-break")
+      .first()
+      .evaluate((el) => Math.round(el.getBoundingClientRect().top + window.scrollY))
+      .catch(() => 0);
+    await page.screenshot({
+      path: PREVIEW,
+      fullPage: true,
+      clip: { x: 0, y: summaryTop, width: PREVIEW_WIDTH, height: PREVIEW_HEIGHT },
+    });
+  } finally {
+    await context.close();
   }
 }
 

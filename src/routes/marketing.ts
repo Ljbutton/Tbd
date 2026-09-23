@@ -17,6 +17,7 @@ export const router = express.Router();
 export const CONTENT_DIR = path.join(ROOT_DIR, "content");
 export const PUBLIC_DIR = path.join(ROOT_DIR, "public");
 export const SAMPLE_PDF_PATH = path.join(PUBLIC_DIR, "sample-report.pdf");
+export const SAMPLE_PREVIEW_PATH = path.join(PUBLIC_DIR, "sample-report-preview.png");
 export const EMBED_JS_PATH = path.join(PUBLIC_DIR, "embed.js");
 export const SAMPLE_MISSING_MESSAGE = "Run npm run sample";
 export const LEGAL_UPDATED = "September 23, 2026";
@@ -361,6 +362,7 @@ router.get(
       mockPayments: config.mockPayments,
       pricing: pricingLocals(),
       samplePdfExists: fs.existsSync(SAMPLE_PDF_PATH),
+      samplePreviewExists: fs.existsSync(SAMPLE_PREVIEW_PATH),
       ...teaserLocals(prefillUrl),
     });
   }),

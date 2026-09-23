@@ -1,6 +1,7 @@
 <%
   const faqEntries = Array.isArray(faq) ? faq : [];
   const hasSample = typeof samplePdfExists === "boolean" ? samplePdfExists : true;
+  const hasPreview = typeof samplePreviewExists === "boolean" ? samplePreviewExists : false;
 %>
 <section class="hero">
   <div class="container hero__inner">
@@ -82,11 +83,19 @@
     <p class="eyebrow">Sample</p>
     <h2 id="sample-heading">See a real report</h2>
     <p class="lead">This is the actual PDF a $49 audit produces, generated against a demo store with the usual problems.</p>
-    <% if (!hasSample) { %>
-      <p class="alert alert-warning">The sample PDF has not been generated on this server yet. Run <code>npm run sample</code> to create it.</p>
+    <% if (hasPreview) { %>
+      <%# A picture of the report is shown instead of an embedded PDF frame: phone browsers often refuse to render PDFs inline. %>
+      <a class="sample-preview-link" href="/sample-report.pdf" data-testid="sample-report-link">
+        <img class="sample-preview" src="/sample-report-preview.png" width="816" height="1056" alt="Pages from the sample report: the executive summary with counts of pages scanned, issues found and critical or serious issues, followed by the ranked issue table" loading="lazy">
+      </a>
+      <p class="mt-2"><a class="btn btn-secondary" href="/sample-report.pdf">Open the sample PDF</a> <a href="/sample-report.pdf" download="accessaudit-sample-report.pdf">Download</a></p>
+    <% } else { %>
+      <% if (!hasSample) { %>
+        <p class="alert alert-warning">The sample PDF has not been generated on this server yet. Run <code>npm run sample</code> to create it.</p>
+      <% } %>
+      <iframe class="embed-frame sample-frame" src="/sample-report.pdf" title="Sample AccessAudit report (PDF)" height="600" loading="lazy"></iframe>
+      <p class="mt-2"><a href="/sample-report.pdf" download="accessaudit-sample-report.pdf" data-testid="sample-report-link">Download the sample PDF</a></p>
     <% } %>
-    <iframe class="embed-frame sample-frame" src="/sample-report.pdf" title="Sample AccessAudit report (PDF)" height="600" loading="lazy"></iframe>
-    <p class="mt-2"><a href="/sample-report.pdf" download="accessaudit-sample-report.pdf">Download the sample PDF</a></p>
   </div>
 </section>
 

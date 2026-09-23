@@ -917,3 +917,23 @@ summary:hover {
     display: none !important;
   }
 }
+
+/* Sample report preview on the landing page (a picture, because phone browsers often will not render a PDF inline). */
+.sample-preview-link {
+  display: block;
+  max-width: 720px;
+  border-radius: 10px;
+}
+.sample-preview-link:focus-visible {
+  outline: 3px solid #1d4ed8;
+  outline-offset: 4px;
+}
+.sample-preview {
+  display: block;
+  width: 100%;
+  height: auto;
+  background: #ffffff;
+  border: 1px solid #d1d5db;
+  border-radius: 10px;
+  box-shadow: 0 10px 30px rgba(15, 23, 42, 0.14);
+}

@@ -12,3 +12,4 @@ playwright-report
 .DS_Store
 # Rendered at build time by `npm run sample`; a stale local copy is never copied in.
 public/sample-report.pdf
+public/sample-report-preview.png

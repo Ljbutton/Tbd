@@ -1,6 +1,6 @@
 // Shared helpers for the end-to-end specs. playwright.config.ts starts the real
 // server on port 3101 with E2E=1, ALLOW_PRIVATE_TARGETS=1 and an empty
-// .e2e-data directory; each spec starts the bundled fixture store in beforeAll
+// temporary data directory; each spec starts the bundled fixture store in beforeAll
 // and audits it. Nothing here touches Stripe, Anthropic or Resend.
 
 import zlib from "node:zlib";

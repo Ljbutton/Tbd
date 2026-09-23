@@ -40,7 +40,8 @@ test("landing page renders and the free single-page scan returns three ranked is
   await expect(page.getByRole("link", { name: "Get 5 credits" })).toHaveAttribute("href", "/order?product=pack5");
   await expect(page.getByRole("link", { name: "Order a reviewed audit" })).toHaveAttribute("href", "/order?product=reviewed");
   await expect(page.locator("footer").getByText("TEST MODE")).toBeVisible();
-  await expect(page.locator("iframe.sample-frame")).toHaveAttribute("src", "/sample-report.pdf");
+  // Present whether the landing page shows the preview image (after npm run sample) or the PDF frame.
+  await expect(page.getByTestId("sample-report-link")).toHaveAttribute("href", "/sample-report.pdf");
 
   // The free scan through the form (progressively enhanced by public/app.js).
   const scanBox = page.locator("#scan");
