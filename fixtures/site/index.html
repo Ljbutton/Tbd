@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<!-- SEEDED VIOLATION (html-has-lang): the <html> element has no lang attribute -->
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Northwind Candles - Hand-poured soy candles</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <header class="site-header">
+    <a class="logo" href="/">Northwind Candles</a>
+    <nav aria-label="Main">
+      <a href="/">Home</a>
+      <a href="/products.html">Products</a>
+      <a href="/about.html">About</a>
+      <a href="/contact.html">Contact</a>
+      <a href="/checkout.html">Checkout</a>
+    </nav>
+  </header>
+  <main>
+    <section class="hero">
+      <h1>Hand-poured soy candles from a small harbor workshop</h1>
+      <!-- SEEDED VIOLATION (color-contrast): #999 text on a white background is about 2.8:1 -->
+      <p style="color: #999; background: #fff; font-size: 18px;">Small batches, natural wax, cotton wicks. Free shipping on orders over $40.</p>
+      <!-- SEEDED VIOLATION (image-alt): hero image without an alt attribute -->
+      <img src="/img/hero-candle.svg" width="240" height="160">
+      <p>
+        <a href="/products.html">Browse the collection</a>
+        <!-- SEEDED VIOLATION (button-name): a button with no text or label -->
+        <button class="icon-btn" type="button"></button>
+        <!-- SEEDED VIOLATION (link-name): an icon-only link with no accessible name -->
+        <a href="#" class="icon-link"></a>
+      </p>
+    </section>
+    <section>
+      <h2>This season's scents</h2>
+      <ul>
+        <li>Harbor Fog - sea salt, driftwood and a little bergamot</li>
+        <li>Orchard Morning - green apple, pear and cedar</li>
+        <li>Woodstove - smoked vanilla, clove and birch</li>
+      </ul>
+      <p>Every candle is poured by hand in 40-jar batches and cured for two weeks before it ships.</p>
+    </section>
+  </main>
+  <footer>
+    <p>Northwind Candles is a fictional store used to test accessibility tooling.</p>
+  </footer>
+</body>
+</html>

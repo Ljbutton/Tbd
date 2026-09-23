@@ -1,0 +1,12 @@
+<%
+  const code = Number(status) || 500;
+  const heading = code === 404 ? "Page not found" : code === 429 ? "Slow down a moment" : code >= 500 ? "Something went wrong" : "That request didn't work";
+%>
+<section class="container section section-narrow">
+  <p class="eyebrow">Error <%= code %></p>
+  <h1><%= heading %></h1>
+  <p class="lead"><%= message %></p>
+  <p>
+    <a class="btn btn-primary" href="/">Back to the home page</a>
+  </p>
+</section>

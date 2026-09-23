@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Checkout - Northwind Candles</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <header class="site-header">
+    <a class="logo" href="/">Northwind Candles</a>
+    <nav aria-label="Main">
+      <a href="/">Home</a>
+      <a href="/products.html">Products</a>
+      <a href="/about.html">About</a>
+      <a href="/contact.html">Contact</a>
+      <a href="/checkout.html">Checkout</a>
+    </nav>
+  </header>
+  <main>
+    <h1>Checkout</h1>
+    <form action="/checkout.html" method="get">
+      <div class="field">
+        <label for="qty">Quantity</label>
+        <!-- SEEDED VIOLATION (target-size): 16px by 16px stepper buttons placed right next to each other -->
+        <button type="button" class="tiny" aria-label="Decrease quantity">-</button>
+        <input type="number" id="qty" name="qty" value="1" min="1" style="width: 60px;">
+        <button type="button" class="tiny" aria-label="Increase quantity">+</button>
+      </div>
+      <div class="field">
+        <!-- SEEDED VIOLATION (select-name): select element with no label or accessible name -->
+        <select name="shipping">
+          <option value="standard">Standard (5-7 days)</option>
+          <option value="express">Express (2 days)</option>
+        </select>
+      </div>
+      <div class="field">
+        <label for="zip">ZIP code</label>
+        <!-- SEEDED VIOLATION (autocomplete-valid): "zipcode" is not a valid autocomplete token -->
+        <input type="text" id="zip" name="zip" autocomplete="zipcode">
+      </div>
+      <div class="field">
+        <label for="card">Card number</label>
+        <input type="text" id="card" name="card" autocomplete="cc-number">
+      </div>
+      <p>
+        Gift orders ship with a handwritten note.
+        <!-- SEEDED VIOLATION (link-in-text-block): link in running text with no underline and nearly the same color as the text -->
+        <a href="/contact.html" style="text-decoration: none; color: #2a2a2a;">click here</a>
+        to tell us what to write.
+      </p>
+      <p><button type="submit">Place order</button></p>
+    </form>
+  </main>
+  <footer>
+    <p>Northwind Candles is a fictional store used to test accessibility tooling.</p>
+  </footer>
+</body>
+</html>

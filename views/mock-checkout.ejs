@@ -1,0 +1,84 @@
+<section class="container section section-narrow">
+  <div class="alert alert-warning" role="status">
+    <strong>Test mode: simulated checkout.</strong>
+    No Stripe key is configured, so this page stands in for Stripe Checkout. Nothing is charged and no card details are sent anywhere.
+  </div>
+
+  <p class="eyebrow">Checkout</p>
+  <h1>Pay <%= total %> <span class="chip chip-test">TEST MODE</span></h1>
+
+  <% if (notice) { %>
+    <div class="alert alert-info" role="status"><%= notice %></div>
+  <% } %>
+
+  <div class="card stack">
+    <div>
+      <h2 class="card-title">Order summary</h2>
+      <div class="table-wrap">
+        <table class="table table-compact">
+          <caption class="visually-hidden">Items in this order</caption>
+          <tbody>
+            <tr>
+              <th scope="row"><%= product.name %></th>
+              <td class="num"><%= listPrice %></td>
+            </tr>
+            <% if (discount) { %>
+              <tr>
+                <th scope="row">Coupon <%= order.coupon %></th>
+                <td class="num">-<%= discount %></td>
+              </tr>
+            <% } %>
+            <tr>
+              <th scope="row">Total due today</th>
+              <td class="num"><strong><%= total %></strong></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <dl class="small">
+        <% if (order.url) { %>
+          <dt class="label">Website to audit</dt>
+          <dd class="break mb-2"><%= order.url %></dd>
+        <% } %>
+        <% if (order.agency_name) { %>
+          <dt class="label">Agency</dt>
+          <dd class="mb-2"><%= order.agency_name %></dd>
+        <% } %>
+        <dt class="label">Receipt and report to</dt>
+        <dd class="mb-0"><%= order.email %></dd>
+      </dl>
+    </div>
+
+    <div>
+      <h2 class="card-title">Card details <span class="muted small">(test card, not charged)</span></h2>
+      <div class="field">
+        <label for="mock-card">Card number</label>
+        <input type="text" id="mock-card" value="4242 4242 4242 4242" readonly aria-describedby="mock-card-hint" inputmode="numeric">
+        <span class="help-text" id="mock-card-hint">Stripe's standard test card. It is pre-filled and read-only in test mode.</span>
+      </div>
+      <div class="grid grid-2">
+        <div class="field">
+          <label for="mock-expiry">Expiry</label>
+          <input type="text" id="mock-expiry" value="12/34" readonly>
+        </div>
+        <div class="field">
+          <label for="mock-cvc">CVC</label>
+          <input type="text" id="mock-cvc" value="123" readonly>
+        </div>
+      </div>
+    </div>
+
+    <div class="row">
+      <form method="post" action="/mock/checkout/<%= order.id %>/pay">
+        <button type="submit" class="btn btn-primary btn-lg">Pay <%= total %> (test mode)</button>
+      </form>
+      <form method="post" action="/mock/checkout/<%= order.id %>/cancel">
+        <button type="submit" class="btn">Cancel</button>
+      </form>
+    </div>
+    <p class="small muted mb-0">
+      Order <code><%= order.id %></code>. Paying here marks the order paid exactly as a real Stripe payment would,
+      then starts your audit or issues your 5-Pack code.
+    </p>
+  </div>
+</section>

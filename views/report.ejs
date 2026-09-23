@@ -1,0 +1,387 @@
+<%#
+  AccessAudit report document (spec section 10). Rendered by src/report/render.ts.
+  mode "pdf": a full HTML document with the stylesheet, logo and screenshots inlined.
+  mode "web": a fragment (inline <style> + .report div) that report-page.ejs embeds.
+  Every dynamic value is output through the escaping tag. The only raw outputs are the
+  repository's own stylesheet (css) and narrative strings passed through textToHtml
+  (escapeHtml then nl2br).
+%><% if (isPdf) { %><!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Website Accessibility Audit - <%= cover.hostname %></title>
+<style>
+<%- css %>
+</style>
+</head>
+<body class="report-doc">
+<% } else { %><style>
+<%- css %>
+</style>
+<% } %><div class="report report--<%= mode %>" id="report">
+<% if (isWeb) { %>
+  <nav class="report-nav" aria-label="Report sections">
+    <ul>
+      <li><a href="#report-summary">Summary</a></li>
+      <li><a href="#report-issues">Issues</a></li>
+      <li><a href="#report-findings">Details</a></li>
+      <li><a href="#report-manual">Manual checks</a></li>
+      <li><a href="#report-pages">Pages</a></li>
+<% if (delta) { %>
+      <li><a href="#report-delta">Before / after</a></li>
+<% } %>
+      <li><a href="#report-method">Method</a></li>
+    </ul>
+  </nav>
+<% } %>
+
+  <%# ---------- 1. Cover ---------- %>
+  <section class="report-cover" id="report-cover" aria-labelledby="report-cover-title">
+<% if (brand.whiteLabel) { %>
+<% if (brand.agencyLogo || brand.agencyName) { %>
+    <div class="report-brand">
+<% if (brand.agencyLogo) { %>
+      <img class="report-brand__logo report-brand__logo--agency" src="<%= brand.agencyLogo %>" alt="<%= brand.agencyName ? brand.agencyName + ' logo' : 'Agency logo' %>">
+<% } %>
+<% if (brand.agencyName) { %>
+      <span class="report-brand__name<%= brand.agencyLogo ? '' : ' report-brand__name--large' %>"><%= brand.agencyName %></span>
+<% } %>
+    </div>
+<% } %>
+<% } else { %>
+    <div class="report-brand">
+      <img class="report-brand__logo" src="<%= logoDataUrl %>" alt="" width="36" height="36">
+      <span class="report-brand__name">AccessAudit</span>
+    </div>
+<% } %>
+    <p class="report-cover__eyebrow">Accessibility report</p>
+    <h1 class="report-cover__title" id="report-cover-title">Website Accessibility Audit</h1>
+    <p class="report-cover__url"><%= cover.siteUrl %></p>
+    <dl class="report-cover__meta">
+      <dt>Date</dt>
+      <dd><%= cover.date %></dd>
+<% if (cover.preparedFor) { %>
+      <dt>Prepared for</dt>
+      <dd><%= cover.preparedFor %></dd>
+<% } %>
+      <dt>Scope</dt>
+      <dd><%= cover.scope %></dd>
+    </dl>
+    <div class="report-disclaimer" role="note">
+      <p><%= disclaimer %></p>
+    </div>
+  </section>
+
+  <%# ---------- 2. Executive summary ---------- %>
+  <section class="report-section<%= isPdf ? ' page-break' : '' %>" id="report-summary" aria-labelledby="report-summary-title">
+    <h2 id="report-summary-title"><span class="report-section__num"><%= sections.summary %></span> Executive summary</h2>
+    <p class="report-lead"><%- textToHtml(narrative.executiveSummary) %></p>
+    <div class="report-stats">
+      <div class="report-stat">
+        <span class="report-stat__value"><%= formatNumber(stats.pagesScanned) %></span>
+        <span class="report-stat__label">Pages scanned</span>
+      </div>
+      <div class="report-stat">
+        <span class="report-stat__value"><%= formatNumber(stats.findingsCount) %></span>
+        <span class="report-stat__label">Issues found</span>
+      </div>
+      <div class="report-stat<%= stats.criticalSerious > 0 ? ' report-stat--alert' : ' report-stat--good' %>">
+        <span class="report-stat__value"><%= formatNumber(stats.criticalSerious) %></span>
+        <span class="report-stat__label">Critical or serious</span>
+      </div>
+      <div class="report-stat">
+        <span class="report-stat__value"><%= formatNumber(stats.elements) %></span>
+        <span class="report-stat__label">Elements affected</span>
+      </div>
+    </div>
+    <h3>Where the risk is</h3>
+    <p><%- textToHtml(narrative.riskOverview) %></p>
+    <h3><%= topPriorities.length >= 3 ? 'Top 3 priorities' : 'Top priorities' %></h3>
+<% if (topPriorities.length > 0) { %>
+    <ol class="report-priorities">
+<% topPriorities.forEach(function (priority) { %>
+      <li><%= priority %></li>
+<% }); %>
+    </ol>
+<% } else { %>
+    <p>The automated checks found no issues on the pages we scanned, so there is nothing to prioritize from this scan. The manual checks in section <%= sections.manual %> still apply.</p>
+<% } %>
+<% if (nextSteps.length > 0) { %>
+    <h3>What to do next</h3>
+    <ol class="report-steps">
+<% nextSteps.forEach(function (step) { %>
+      <li><%- textToHtml(step) %></li>
+<% }); %>
+    </ol>
+<% } %>
+  </section>
+
+  <%# ---------- 3. Issue table ---------- %>
+  <section class="report-section" id="report-issues" aria-labelledby="report-issues-title">
+    <h2 id="report-issues-title"><span class="report-section__num"><%= sections.issues %></span> Issues at a glance</h2>
+<% if (issues.length === 0) { %>
+    <p>The automated checks found no issues on the <%= formatNumber(stats.pagesScanned) %> pages we scanned.</p>
+<% } else { %>
+    <p class="muted">Ranked by impact, how many pages are affected and how often the category shows up in accessibility complaints. Rank 1 is where to start.</p>
+    <div class="report-table-wrap">
+      <table class="report-table report-table--issues">
+        <thead>
+          <tr>
+            <th scope="col" class="num">#</th>
+            <th scope="col">Issue</th>
+            <th scope="col">Impact</th>
+            <th scope="col">Confidence</th>
+            <th scope="col" class="num">Pages</th>
+            <th scope="col" class="num">Elements</th>
+            <th scope="col">Effort</th>
+          </tr>
+        </thead>
+        <tbody>
+<% issues.forEach(function (row) { %>
+          <tr>
+            <td class="num"><%= row.rank %></td>
+            <td><a class="report-link" href="#<%= row.anchor %>"><%= row.title %></a><span class="report-rule"><%= row.ruleId %></span></td>
+            <td><span class="badge badge--<%= row.impact %>"><%= row.impactLabel %></span></td>
+            <td><span class="badge badge--<%= row.confidence %>"><%= row.confidenceLabel %></span></td>
+            <td class="num"><%= formatNumber(row.pagesAffected) %></td>
+            <td class="num"><%= formatNumber(row.nodesTotal) %></td>
+            <td><%= row.effortLabel %></td>
+          </tr>
+<% }); %>
+        </tbody>
+      </table>
+    </div>
+<% } %>
+  </section>
+
+  <%# ---------- 4. Findings detail ---------- %>
+  <section class="report-section page-break" id="report-findings" aria-labelledby="report-findings-title">
+    <h2 id="report-findings-title"><span class="report-section__num"><%= sections.findings %></span> Findings in detail</h2>
+<% if (details.length === 0) { %>
+    <p>No automated findings to detail for this scan.</p>
+<% } %>
+<% details.forEach(function (d) { %>
+    <article class="finding finding--<%= d.impact %>" id="<%= d.anchor %>" aria-labelledby="<%= d.anchor %>-title">
+      <header class="finding__head">
+        <span class="finding__rank">#<%= d.rank %></span>
+        <h3 class="finding__title" id="<%= d.anchor %>-title"><%= d.title %></h3>
+        <div class="finding__badges">
+          <span class="badge badge--<%= d.impact %>"><%= d.impactLabel %></span>
+          <span class="badge badge--<%= d.confidence %>"><%= d.confidenceLabel %></span>
+          <span class="badge badge--effort">Effort: <%= d.effortLabel %></span>
+          <span class="badge badge--category"><%= d.categoryLabel %></span>
+        </div>
+        <p class="finding__meta">
+          Rule <code><%= d.ruleId %></code>
+          &middot; <%= formatNumber(d.pagesAffected) %> <%= d.pagesAffected === 1 ? 'page' : 'pages' %>,
+          <%= formatNumber(d.nodesTotal) %> <%= d.nodesTotal === 1 ? 'element' : 'elements' %>
+<% if (d.wcagTags.length > 0) { %>
+          &middot; WCAG: <%= d.wcagTags.join(', ') %>
+<% } %>
+<% if (d.helpUrl) { %>
+          &middot; <a href="<%= d.helpUrl %>">Rule reference</a>
+<% } %>
+        </p>
+      </header>
+
+      <h4>What we found</h4>
+      <p><%- textToHtml(d.text.plainEnglish) %></p>
+
+      <h4>Why it matters</h4>
+      <p><%- textToHtml(d.text.whyItMatters) %></p>
+
+      <h4>Where</h4>
+<% if (d.where.length > 0) { %>
+      <ul class="finding__where">
+<% d.where.forEach(function (url) { %>
+        <li class="url"><%= url %></li>
+<% }); %>
+<% if (d.moreCount > 0) { %>
+        <li class="more">+<%= formatNumber(d.moreCount) %> more <%= d.moreCount === 1 ? 'page' : 'pages' %></li>
+<% } %>
+      </ul>
+<% } else { %>
+      <p class="muted">Page list not available for this finding.</p>
+<% } %>
+<% if (d.exampleSelector) { %>
+      <p class="finding__selector">Example element: <code><%= d.exampleSelector %></code><% if (d.examplePageUrl) { %> on <span class="url"><%= d.examplePageUrl %></span><% } %></p>
+<% } %>
+<% if (d.screenshot) { %>
+      <figure class="finding__shot">
+        <img src="<%= d.screenshot %>" alt="<%= d.screenshotAlt %>">
+        <figcaption>Example element<% if (d.examplePageUrl) { %> on <%= d.examplePageUrl %><% } %></figcaption>
+      </figure>
+<% } %>
+
+      <h4>Fix</h4>
+<% if (d.text.fixSteps.length > 0) { %>
+      <ol class="finding__steps">
+<% d.text.fixSteps.forEach(function (step) { %>
+        <li><%- textToHtml(step) %></li>
+<% }); %>
+      </ol>
+<% } else if (d.helpUrl) { %>
+      <p>Read the rule details: <a href="<%= d.helpUrl %>"><%= d.helpUrl %></a></p>
+<% } %>
+<% if (d.text.beforeHtml || d.text.afterHtml) { %>
+      <div class="code-pair<%= d.text.beforeHtml && d.text.afterHtml ? '' : ' code-pair--single' %>">
+<% if (d.text.beforeHtml) { %>
+        <div class="code-block code-block--before">
+          <p class="code-block__label">Before</p>
+          <pre><code><%= d.text.beforeHtml %></code></pre>
+        </div>
+<% } %>
+<% if (d.text.afterHtml) { %>
+        <div class="code-block code-block--after">
+          <p class="code-block__label">After</p>
+          <pre><code><%= d.text.afterHtml %></code></pre>
+        </div>
+<% } %>
+      </div>
+<% } %>
+    </article>
+<% }); %>
+  </section>
+
+  <%# ---------- 5. Manual checks ---------- %>
+  <section class="report-section page-break" id="report-manual" aria-labelledby="report-manual-title">
+    <h2 id="report-manual-title"><span class="report-section__num"><%= sections.manual %></span> Manual checks you still need</h2>
+    <p><%= automatedCoverage %> The checks below cover what a tool cannot judge. Each one takes a few minutes and needs no special software.</p>
+<% if (manualChecks.length > 0) { %>
+    <ol class="report-checklist">
+<% manualChecks.forEach(function (check) { %>
+      <li><strong><%= check.title %></strong> <%- textToHtml(check.how) %></li>
+<% }); %>
+    </ol>
+<% } %>
+  </section>
+
+  <%# ---------- 6. Pages scanned ---------- %>
+  <section class="report-section" id="report-pages" aria-labelledby="report-pages-title">
+    <h2 id="report-pages-title"><span class="report-section__num"><%= sections.pages %></span> Pages scanned</h2>
+    <p class="muted">
+      <%= formatNumber(stats.pagesScanned) %> of <%= formatNumber(stats.pagesRequested) %> requested <%= stats.pagesRequested === 1 ? 'page' : 'pages' %> scanned<% if (stats.pagesFailed > 0) { %>, <%= formatNumber(stats.pagesFailed) %> could not be loaded<% } %>.
+      Issue counts are the number of failing elements found on each page at that screen size.
+    </p>
+<% if (pages.length === 0) { %>
+    <p>No page details were recorded for this scan.</p>
+<% } else { %>
+    <div class="report-table-wrap">
+      <table class="report-table report-table--pages">
+        <thead>
+          <tr>
+            <th scope="col">URL</th>
+            <th scope="col">Title</th>
+            <th scope="col" class="num">Desktop issues</th>
+            <th scope="col" class="num">Mobile issues</th>
+            <th scope="col">Status</th>
+          </tr>
+        </thead>
+        <tbody>
+<% pages.forEach(function (page) { %>
+          <tr>
+            <td class="url"><%= page.url %></td>
+            <td><%= page.title %></td>
+            <td class="num"><%= page.desktopIssues === null ? '-' : formatNumber(page.desktopIssues) %></td>
+            <td class="num"><%= page.mobileIssues === null ? '-' : formatNumber(page.mobileIssues) %></td>
+<% if (page.loaded) { %>
+            <td><%= page.statusCode === null ? 'Scanned' : page.statusCode %></td>
+<% } else { %>
+            <td class="status--failed">Could not load</td>
+<% } %>
+          </tr>
+<% }); %>
+        </tbody>
+      </table>
+    </div>
+<% } %>
+  </section>
+
+<% if (delta) { %>
+  <%# ---------- 7. Before / after ---------- %>
+  <section class="report-section page-break" id="report-delta" aria-labelledby="report-delta-title">
+    <h2 id="report-delta-title"><span class="report-section__num"><%= sections.delta %></span> Before / after</h2>
+    <div class="delta-dates">
+      <span><strong>Original scan</strong> <%= deltaView.originalDate %></span>
+      <span><strong>Re-scan</strong> <%= deltaView.rescanDate %></span>
+    </div>
+    <div class="report-stats">
+      <div class="report-stat<%= delta.percentFixed > 0 ? ' report-stat--good' : '' %>">
+        <span class="report-stat__value"><%= formatNumber(delta.percentFixed) %>%</span>
+        <span class="report-stat__label">Elements fixed</span>
+      </div>
+      <div class="report-stat">
+        <span class="report-stat__value"><%= formatNumber(delta.nodesBefore) %></span>
+        <span class="report-stat__label">Elements before</span>
+      </div>
+      <div class="report-stat">
+        <span class="report-stat__value"><%= formatNumber(delta.nodesAfter) %></span>
+        <span class="report-stat__label">Elements after</span>
+      </div>
+      <div class="report-stat<%= delta.newIssues.length > 0 ? ' report-stat--alert' : '' %>">
+        <span class="report-stat__value"><%= formatNumber(delta.newIssues.length) %></span>
+        <span class="report-stat__label">New issue <%= delta.newIssues.length === 1 ? 'type' : 'types' %></span>
+      </div>
+    </div>
+<% deltaView.groups.forEach(function (group) { %>
+    <h3><%= group.label %> (<%= formatNumber(group.rows.length) %>)</h3>
+<% if (group.rows.length === 0) { %>
+    <p class="muted"><%= group.empty %></p>
+<% } else { %>
+    <div class="report-table-wrap">
+      <table class="report-table">
+        <thead>
+          <tr>
+            <th scope="col">Issue</th>
+            <th scope="col" class="num">Elements before</th>
+            <th scope="col" class="num">Elements after</th>
+            <th scope="col" class="num">Change</th>
+          </tr>
+        </thead>
+        <tbody>
+<% group.rows.forEach(function (row) { %>
+          <tr>
+            <td><%= row.title %><span class="report-rule"><%= row.ruleId %></span></td>
+            <td class="num"><%= formatNumber(row.before) %></td>
+            <td class="num"><%= formatNumber(row.after) %></td>
+            <td class="num delta-change--<%= row.direction %>"><%= row.changeLabel %></td>
+          </tr>
+<% }); %>
+        </tbody>
+      </table>
+    </div>
+<% } %>
+<% }); %>
+  </section>
+<% } %>
+
+  <%# ---------- 8. Method and limits ---------- %>
+  <section class="report-section" id="report-method" aria-labelledby="report-method-title">
+    <h2 id="report-method-title"><span class="report-section__num"><%= sections.method %></span> Method and limits</h2>
+    <dl class="report-meta">
+      <dt>Tool</dt>
+      <dd>axe-core <%= method.axeVersion %>, run in headless Chromium through Playwright <%= method.playwrightVersion %>, with the WCAG 2.0, 2.1 and 2.2 A and AA rule sets</dd>
+      <dt>Viewports</dt>
+      <dd><%= method.viewports.join('; ') %></dd>
+      <dt>Page cap</dt>
+      <dd>Up to <%= formatNumber(method.pageCap) %> pages discovered by following same-site links from <span class="url"><%= cover.siteUrl %></span>; <%= formatNumber(stats.pagesScanned) %> scanned</dd>
+      <dt>Scan window</dt>
+      <dd><%= method.scanStarted %> to <%= method.scanFinished %></dd>
+      <dt>Report generated</dt>
+      <dd><%= method.generatedAt %></dd>
+      <dt>Report ID</dt>
+      <dd><code><%= method.reportId %></code></dd>
+    </dl>
+    <p><%= automatedCoverage %> They cannot judge whether alternative text describes an image well, whether a page makes sense with a keyboard or a screen reader, or whether content is understandable. That is why section <%= sections.manual %> lists the checks that still need a person.</p>
+    <p>Findings marked "Needs manual check" are places where the tool saw a possible problem but could not confirm it on its own. Pages that could not be loaded were not tested. Pages that are only reachable by logging in, submitting a form or following links from other sites were not discovered.</p>
+    <p><%= disclaimer %></p>
+<% if (!brand.whiteLabel) { %>
+    <p class="report-brandline">Scanned with AccessAudit<% if (method.brandLink) { %> &mdash; <a href="<%= method.brandLink %>"><%= method.brandLink %></a><% } %></p>
+<% } %>
+  </section>
+</div>
+<% if (isPdf) { %>
+</body>
+</html>
+<% } %>

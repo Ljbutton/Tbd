@@ -1,0 +1,131 @@
+<%
+  const isPack = product.id === "pack5";
+  const err = (name) => errors[name] || "";
+  const invalid = (name) => err(name) ? 'aria-invalid="true"' : "";
+  const describedBy = (name, hint) => {
+    const ids = [];
+    if (hint) ids.push(name + "-hint");
+    if (err(name)) ids.push(name + "-error");
+    return ids.length ? 'aria-describedby="' + ids.join(" ") + '"' : "";
+  };
+%>
+<section class="container section">
+  <p class="eyebrow">Checkout</p>
+  <h1>Order your <%= product.name %></h1>
+  <p class="lead">One-time payment. No subscription, no overlay, nothing installed on your site.</p>
+
+  <div class="grid grid-2">
+    <div>
+      <div class="card card-highlight">
+        <h2 class="card-title"><%= product.name %></h2>
+        <p class="price"><%= product.price %> <small>one time</small></p>
+        <ul class="feature-list">
+          <% product.bullets.forEach((bullet) => { %>
+            <li><%= bullet %></li>
+          <% }) %>
+        </ul>
+        <% if (isPack && foundingLeft > 0) { %>
+          <p class="alert alert-info mb-0">
+            Founding offer: the first 20 agencies pay <%= foundingPrice %> with code <strong><%= foundingCode %></strong>
+            (<%= foundingLeft %> left).
+          </p>
+        <% } %>
+      </div>
+      <p class="small muted mt-2">
+        Automated checks find roughly 30-40% of WCAG issues. This is an automated audit plus a manual checklist,
+        not a legal opinion or a compliance certification.
+      </p>
+      <p class="small muted">
+        Full refund within 7 days if the report is unusable; just reply to your receipt.
+      </p>
+    </div>
+
+    <div class="card">
+      <h2 class="card-title">Your details</h2>
+
+      <% if (hasErrors) { %>
+        <div class="alert alert-error" role="alert" id="form-errors">
+          <strong>Please fix the following:</strong>
+          <ul class="mb-0">
+            <% Object.keys(errors).forEach((key) => { %>
+              <li><%= errors[key] %></li>
+            <% }) %>
+          </ul>
+        </div>
+      <% } %>
+
+      <form method="post" action="/order" enctype="multipart/form-data" novalidate>
+        <input type="hidden" name="product" value="<%= product.id %>">
+
+        <% if (!isPack) { %>
+          <div class="field">
+            <label for="url">Website address</label>
+            <input type="url" id="url" name="url" value="<%= values.url %>" required
+                   placeholder="https://yourstore.com" autocomplete="url" inputmode="url"
+                   <%- invalid("url") %> <%- describedBy("url", true) %>>
+            <span class="help-text" id="url-hint">We crawl up to <%= product.pageLimit %> pages starting from this address.</span>
+            <% if (err("url")) { %><span class="error-text" id="url-error"><%= err("url") %></span><% } %>
+          </div>
+        <% } %>
+
+        <div class="field">
+          <label for="email">Email</label>
+          <input type="email" id="email" name="email" value="<%= values.email %>" required
+                 autocomplete="email" placeholder="you@example.com"
+                 <%- invalid("email") %> <%- describedBy("email", true) %>>
+          <span class="help-text" id="email-hint">
+            <%= isPack ? "Your 5-Pack code and receipt go here." : "Your report link and receipt go here." %>
+          </span>
+          <% if (err("email")) { %><span class="error-text" id="email-error"><%= err("email") %></span><% } %>
+        </div>
+
+        <% if (isPack) { %>
+          <div class="field">
+            <label for="agency_name">Agency name</label>
+            <input type="text" id="agency_name" name="agency_name" value="<%= values.agency_name %>" required
+                   maxlength="<%= maxAgencyName %>" autocomplete="organization"
+                   <%- invalid("agency_name") %> <%- describedBy("agency_name", true) %>>
+            <span class="help-text" id="agency_name-hint">Printed on the cover of every white-label report (max <%= maxAgencyName %> characters).</span>
+            <% if (err("agency_name")) { %><span class="error-text" id="agency_name-error"><%= err("agency_name") %></span><% } %>
+          </div>
+
+          <div class="field">
+            <label for="agency_logo">Agency logo <span class="muted">(optional)</span></label>
+            <input type="file" id="agency_logo" name="agency_logo" accept="image/png,image/jpeg,image/svg+xml"
+                   <%- invalid("agency_logo") %> <%- describedBy("agency_logo", true) %>>
+            <span class="help-text" id="agency_logo-hint">PNG, JPG or SVG, up to <%= maxLogoMb %> MB. Shown on the report cover instead of ours.</span>
+            <% if (err("agency_logo")) { %><span class="error-text" id="agency_logo-error"><%= err("agency_logo") %></span><% } %>
+          </div>
+
+          <div class="field">
+            <label for="coupon">Coupon code <span class="muted">(optional)</span></label>
+            <input type="text" id="coupon" name="coupon" value="<%= values.coupon %>" maxlength="40"
+                   autocomplete="off" autocapitalize="characters" spellcheck="false"
+                   <%- invalid("coupon") %> <%- describedBy("coupon", true) %>>
+            <span class="help-text" id="coupon-hint">Founding agencies: <%= foundingCode %></span>
+            <% if (err("coupon")) { %><span class="error-text" id="coupon-error"><%= err("coupon") %></span><% } %>
+          </div>
+        <% } %>
+
+        <div class="field">
+          <label class="checkbox" for="acknowledge">
+            <input type="checkbox" id="acknowledge" name="acknowledge" value="1" required
+                   <%= values.acknowledge ? "checked" : "" %>
+                   <%- invalid("acknowledge") %> <%- describedBy("acknowledge", false) %>>
+            <span>I understand this is an automated audit, not a compliance certification</span>
+          </label>
+          <% if (err("acknowledge")) { %><span class="error-text" id="acknowledge-error"><%= err("acknowledge") %></span><% } %>
+        </div>
+
+        <button type="submit" class="btn btn-primary btn-lg btn-block">Continue to payment</button>
+        <p class="small muted mt-2 mb-0">
+          <% if (mockPayments) { %>
+            Test mode: the next page is a simulated checkout. No card is charged.
+          <% } else { %>
+            Payment is handled by Stripe. We never see your card number.
+          <% } %>
+        </p>
+      </form>
+    </div>
+  </div>
+</section>

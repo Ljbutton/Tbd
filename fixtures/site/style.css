@@ -1,0 +1,18 @@
+/* Northwind Candles fixture stylesheet. Deliberate accessibility problems are
+   applied inline in the HTML next to an explanatory comment. */
+body { margin: 0; font-family: Georgia, "Times New Roman", serif; color: #222; background: #fff; line-height: 1.5; }
+.site-header { display: flex; align-items: center; justify-content: space-between; padding: 12px 24px; border-bottom: 1px solid #ddd; }
+.logo { font-weight: bold; font-size: 20px; color: #222; text-decoration: none; }
+nav a { margin-left: 16px; color: #1a4d8c; }
+main { max-width: 900px; margin: 0 auto; padding: 24px; }
+.hero { padding: 24px 0; }
+.grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 20px; }
+.product { border: 1px solid #ddd; padding: 12px; }
+.product img { width: 120px; height: 120px; }
+.icon-btn, .icon-link { display: inline-block; width: 32px; height: 32px; border: 1px solid #999; background: #f4f4f4; border-radius: 4px; vertical-align: middle; }
+.icon { display: inline-block; width: 14px; height: 14px; background: #777; border-radius: 50%; }
+.field { margin-bottom: 12px; }
+input, textarea, select { font: inherit; padding: 6px; }
+button { font: inherit; padding: 6px 12px; }
+.tiny { width: 16px; height: 16px; padding: 0; line-height: 1; font-size: 11px; }
+footer { border-top: 1px solid #ddd; padding: 16px 24px; font-size: 14px; color: #555; }

@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Products - Northwind Candles</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <header class="site-header">
+    <a class="logo" href="/">Northwind Candles</a>
+    <nav aria-label="Main">
+      <a href="/">Home</a>
+      <a href="/products.html">Products</a>
+      <a href="/about.html">About</a>
+      <a href="/contact.html">Contact</a>
+      <a href="/checkout.html">Checkout</a>
+    </nav>
+  </header>
+  <main>
+    <h1>Candles</h1>
+    <!-- SEEDED VIOLATION (color-contrast): light grey intro text (#aaa) on white -->
+    <p style="color: #aaa;">All jars are 8 oz and burn for roughly 45 hours.</p>
+    <div class="grid">
+      <div class="product">
+        <!-- SEEDED VIOLATION (image-alt): product image 1 without alt -->
+        <img src="/img/candle-harbor.svg">
+        <h2>Harbor Fog</h2>
+        <!-- SEEDED VIOLATION (color-contrast): white price text on a pale yellow background -->
+        <p style="color: #fff; background: #ffe680; padding: 2px 6px; display: inline-block;">$24</p>
+        <p><button type="button">Add Harbor Fog to cart</button></p>
+      </div>
+      <div class="product">
+        <!-- SEEDED VIOLATION (image-alt): product image 2 without alt -->
+        <img src="/img/candle-orchard.svg">
+        <h2>Orchard Morning</h2>
+        <p>$24</p>
+        <!-- SEEDED VIOLATION (tabindex): positive tabindex forces an unnatural focus order -->
+        <p><button type="button" tabindex="5">Add Orchard Morning to cart</button></p>
+      </div>
+      <div class="product">
+        <!-- SEEDED VIOLATION (image-alt): product image 3 without alt -->
+        <img src="/img/candle-woodstove.svg">
+        <h2>Woodstove</h2>
+        <p>$26</p>
+        <p><button type="button">Add Woodstove to cart</button></p>
+      </div>
+      <div class="product">
+        <!-- SEEDED VIOLATION (image-alt): product image 4 without alt -->
+        <img src="/img/candle-sampler.svg">
+        <h2>Sampler Set</h2>
+        <p>$58</p>
+        <p><button type="button">Add Sampler Set to cart</button></p>
+      </div>
+    </div>
+  </main>
+  <footer>
+    <p>Northwind Candles is a fictional store used to test accessibility tooling.</p>
+  </footer>
+</body>
+</html>

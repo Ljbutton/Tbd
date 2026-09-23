@@ -1,0 +1,14 @@
+<section class="container section section-narrow">
+  <p class="eyebrow">Checkout cancelled</p>
+  <h1>No charge was made.</h1>
+  <p class="lead">
+    You left the checkout before paying<% if (order) { %> for the <%= product.name %><% } %>, so nothing was billed and no audit was started.
+  </p>
+  <div class="row">
+    <a class="btn btn-primary" href="<%= retryUrl %>">Back to the order form</a>
+    <a class="btn" href="/#pricing">See all plans</a>
+  </div>
+  <p class="small muted mt-4">
+    Changed your mind about the site to audit? Run a <a href="/#scan">free single-page scan</a> first.
+  </p>
+</section>

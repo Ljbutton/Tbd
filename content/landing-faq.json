@@ -1,0 +1,34 @@
+[
+  {
+    "q": "Is this a compliance certificate?",
+    "a": "No. AccessAudit runs automated WCAG 2.2 A/AA checks with axe-core, ranks what it finds and explains it in plain English. Automated checks find roughly 30-40% of WCAG issues. This is an automated audit plus a manual checklist, not a legal opinion or a compliance certification. Nobody can certify a website from a scan alone, and anyone who says otherwise is selling you something."
+  },
+  {
+    "q": "What does automated testing miss?",
+    "a": "Anything that needs human judgment: whether alt text actually describes the image, whether the keyboard focus order makes sense, whether a screen reader can get through checkout, whether error messages are announced, whether captions are accurate. Every report ends with a 12-item manual checklist that tells you exactly how to test those yourself, and every finding is flagged as either automated (we saw it fail) or needs manual check (we saw something suspicious)."
+  },
+  {
+    "q": "Which pages get scanned?",
+    "a": "We start at the address you give us, follow same-site links the way a visitor would, and scan up to 15 pages (30 per site on the Agency 5-Pack) at both desktop and mobile sizes. The start page is always scanned; pages your robots.txt disallows are skipped. The report lists every page we visited and what we found on each."
+  },
+  {
+    "q": "Do you store my site?",
+    "a": "We store the addresses of the pages we scanned, the axe results for each page, small screenshots of the elements behind the top ten findings, and the report files (PDF, JSON, CSV). We do not keep copies of your pages, and we never store card numbers; payment is handled by Stripe. There are no tracking cookies on this site. See the Privacy page for the full list and retention details."
+  },
+  {
+    "q": "Can I use this for clients?",
+    "a": "Yes. The Agency 5-Pack gives you five audits at up to 30 pages each, delivered as white-label PDFs with your agency name and logo on the cover and no AccessAudit branding inside. Your team shares one code, every audit includes a free re-scan, and you can embed the free scanner on your own site to generate leads."
+  },
+  {
+    "q": "What is a re-scan?",
+    "a": "Every audit includes one free re-scan within 30 days. Fix what you can, click Re-scan on your report page, and you get a fresh audit of the same pages plus a before/after section showing which issues are gone, which remain and what is new. The dated remediation record documents both scans."
+  },
+  {
+    "q": "Refunds?",
+    "a": "Full refund within 7 days if the report is unusable for your site, for example because most pages could not be loaded. Reply to your receipt email and we will sort it out; you do not need to explain yourself. Refunds go back to the original payment method."
+  },
+  {
+    "q": "Do you sell an overlay?",
+    "a": "No, never. Overlay widgets promise to fix accessibility with one line of JavaScript, and in practice they hide problems from you while leaving them in place for your visitors; hundreds of sites running overlays have still been sued. AccessAudit only tells you what is wrong and how to fix it in your own code."
+  }
+]

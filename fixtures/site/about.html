@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>About - Northwind Candles</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <header class="site-header">
+    <a class="logo" href="/">Northwind Candles</a>
+    <nav aria-label="Main">
+      <a href="/">Home</a>
+      <a href="/products.html">Products</a>
+      <a href="/about.html">About</a>
+      <a href="/contact.html">Contact</a>
+      <a href="/checkout.html">Checkout</a>
+    </nav>
+  </header>
+  <main>
+    <h1>Our story</h1>
+    <p>Northwind Candles started in a rented garage with one melting pot and a shelf of thrifted jars. Six years later we still pour every candle by hand.</p>
+    <!-- SEEDED VIOLATION (heading-order): jumps from h1 straight to h4 -->
+    <h4>How we make them</h4>
+    <p>Soy wax, cotton wicks, phthalate-free fragrance oils. Each batch cures for fourteen days.</p>
+    <!-- SEEDED VIOLATION (empty-heading): heading with no content -->
+    <h2></h2>
+    <h2>Opening hours</h2>
+    <!-- SEEDED VIOLATION (frame-title): iframe without a title attribute -->
+    <iframe src="/hours.html" width="300" height="120"></iframe>
+    <h2>What we believe</h2>
+    <!-- SEEDED VIOLATION (list): a <ul> that contains a <div> instead of only <li> children -->
+    <ul>
+      <div>Buy less, burn longer</div>
+      <li>Reuse the jar</li>
+      <li>Pay makers fairly</li>
+    </ul>
+    <!-- SEEDED VIOLATION (listitem): an <li> that is not inside a list -->
+    <li>Ship in paper, never plastic</li>
+    <p>Staff can find the <a href="/private/secret.html">warehouse notes</a> here.</p>
+  </main>
+  <footer>
+    <p>Northwind Candles is a fictional store used to test accessibility tooling.</p>
+  </footer>
+</body>
+</html>

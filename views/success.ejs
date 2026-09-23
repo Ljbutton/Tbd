@@ -1,0 +1,86 @@
+<section class="container section section-narrow">
+<% if (state === "confirming") { %>
+  <p class="eyebrow">Almost there</p>
+  <h1>Confirming your payment…</h1>
+  <div class="card" role="status" aria-live="polite">
+    <p class="row"><span class="spinner" aria-hidden="true"></span> <span>We're waiting for the payment confirmation for your <%= product.name %>. This usually takes a few seconds.</span></p>
+    <% if (refreshing) { %>
+      <p class="small muted mb-0">This page checks again every few seconds. <a href="<%= refreshUrl %>">Check now</a>.</p>
+    <% } else { %>
+      <p class="mb-0">
+        We haven't received a confirmation yet. If you completed the payment, keep this link and
+        <a href="<%= refreshUrl %>">check again</a> in a minute; your receipt email will also contain the report link.
+        If you did not pay, nothing has been charged.
+      </p>
+    <% } %>
+    <% if (mockCheckoutUrl) { %>
+      <p class="mt-2 mb-0"><a class="btn" href="<%= mockCheckoutUrl %>">Return to the test checkout</a></p>
+    <% } %>
+  </div>
+<% } else { %>
+  <% const isPack = order.product === "pack5"; %>
+  <% if (state === "refunded") { %>
+    <div class="alert alert-warning" role="status">
+      <strong>This order was refunded.</strong> Anything already generated stays available below.
+    </div>
+  <% } else { %>
+    <div class="alert alert-success" role="status">
+      <strong>Payment received.</strong> Thanks for your order of <%= total %>.
+    </div>
+  <% } %>
+
+  <% if (isPack) { %>
+    <p class="eyebrow">Agency 5-Pack</p>
+    <h1>Your 5-Pack is ready</h1>
+    <% if (creditCode) { %>
+      <div class="card">
+        <p class="label">Your code</p>
+        <p class="price break"><code><%= creditCode.code %></code></p>
+        <p><strong><%= creditCode.credits_left %> credits left</strong> of <%= creditCode.credits_total %>. Each credit is one white-label audit of up to <%= product.pageLimit %> pages.</p>
+        <p><a class="btn btn-primary btn-lg" href="/credits/<%= creditCode.code %>">Start your first audit</a></p>
+        <p class="small muted mb-0">
+          Share the link <code><%= baseUrl %>/credits/<%= creditCode.code %></code> with your team; anyone with it can use a credit.
+          <% if (emailOutbox) { %>
+            In test mode the email with this code is in <a href="/outbox">/outbox</a>.
+          <% } else { %>
+            We also emailed the code to <%= order.email %>.
+          <% } %>
+        </p>
+      </div>
+    <% } else { %>
+      <div class="alert alert-error" role="alert">
+        We could not find the code for this order. Reply to your receipt email and we'll sort it out.
+      </div>
+    <% } %>
+  <% } else { %>
+    <p class="eyebrow"><%= product.name %></p>
+    <h1>Your audit is running</h1>
+    <% if (audit) { %>
+      <div class="card">
+        <p>We're crawling <span class="break"><strong><%= audit.url %></strong></span> at desktop and mobile sizes. Most audits finish in 5-10 minutes.</p>
+        <p><a class="btn btn-primary btn-lg" href="/r/<%= audit.token %>">Open your report page</a></p>
+        <p class="small muted">Bookmark it: <code class="break"><%= baseUrl %>/r/<%= audit.token %></code>. The page updates itself while the scan runs.</p>
+        <% if (order.product === "reviewed") { %>
+          <p class="small">After the automated scan, a person checks your site by hand and edits the write-up. Expect the finished report within 2 business days.</p>
+        <% } %>
+        <p class="mb-0">
+          <% if (emailOutbox) { %>
+            In test mode, see <a href="/outbox">/outbox</a> for the emails we would have sent.
+          <% } else { %>
+            We'll also email <%= order.email %> when the report is ready.
+          <% } %>
+        </p>
+      </div>
+    <% } else { %>
+      <div class="alert alert-error" role="alert">
+        We could not find the audit for this order. Reply to your receipt email and we'll start it by hand.
+      </div>
+    <% } %>
+  <% } %>
+
+  <p class="small muted mt-4">
+    Automated checks find roughly 30-40% of WCAG issues. This is an automated audit plus a manual checklist,
+    not a legal opinion or a compliance certification.
+  </p>
+<% } %>
+</section>

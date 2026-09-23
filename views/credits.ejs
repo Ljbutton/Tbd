@@ -1,0 +1,114 @@
+<%
+  const err = (name) => errors[name] || "";
+  const invalid = (name) => err(name) ? 'aria-invalid="true"' : "";
+  const describedBy = (name, hint) => {
+    const ids = [];
+    if (hint) ids.push(name + "-hint");
+    if (err(name)) ids.push(name + "-error");
+    return ids.length ? 'aria-describedby="' + ids.join(" ") + '"' : "";
+  };
+  const shortDate = (iso) => (iso || "").slice(0, 10);
+  const noCredits = code.credits_left <= 0;
+%>
+<section class="container section">
+  <p class="eyebrow">Agency 5-Pack</p>
+  <h1><%= code.agency_name || "Your agency" %></h1>
+  <p class="lead">Code <code><%= code.code %></code></p>
+
+  <div class="grid grid-3 mb-2">
+    <div class="stat">
+      <span class="stat-value"><%= code.credits_left %></span>
+      <span class="stat-label">credits left of <%= code.credits_total %></span>
+    </div>
+    <div class="stat">
+      <span class="stat-value"><%= audits.length %></span>
+      <span class="stat-label">audits started with this code</span>
+    </div>
+    <div class="stat">
+      <span class="stat-value"><%= pageLimit %></span>
+      <span class="stat-label">pages per audit, desktop and mobile</span>
+    </div>
+  </div>
+
+  <div class="grid grid-2">
+    <div class="card">
+      <% if (noCredits) { %>
+        <h2 class="card-title">No credits left</h2>
+        <p>Every credit on this code has been used. Buy another 5-Pack and you'll get a fresh code by email.</p>
+        <p class="mb-0"><a class="btn btn-primary" href="<%= buyMoreUrl %>">Buy another 5-Pack</a></p>
+      <% } else { %>
+        <h2 class="card-title">Start an audit</h2>
+        <p class="small muted">White-label report with <%= code.agency_name ? "the " + code.agency_name : "your" %> name<%= code.agency_logo_path ? " and logo" : "" %> on the cover. Uses 1 credit.</p>
+
+        <% if (hasErrors) { %>
+          <div class="alert alert-error" role="alert">
+            <strong>Please fix the following:</strong>
+            <ul class="mb-0">
+              <% Object.keys(errors).forEach((key) => { %>
+                <li><%= errors[key] %></li>
+              <% }) %>
+            </ul>
+          </div>
+        <% } %>
+
+        <form method="post" action="/credits/<%= code.code %>/audit" novalidate>
+          <div class="field">
+            <label for="url">Client website address</label>
+            <input type="url" id="url" name="url" value="<%= values.url %>" required placeholder="https://clientsite.com"
+                   autocomplete="url" inputmode="url" <%- invalid("url") %> <%- describedBy("url", true) %>>
+            <span class="help-text" id="url-hint">We crawl up to <%= pageLimit %> pages starting here.</span>
+            <% if (err("url")) { %><span class="error-text" id="url-error"><%= err("url") %></span><% } %>
+          </div>
+          <div class="field">
+            <label for="email">Send the report to</label>
+            <input type="email" id="email" name="email" value="<%= values.email %>" required autocomplete="email"
+                   <%- invalid("email") %> <%- describedBy("email", true) %>>
+            <span class="help-text" id="email-hint">Prefilled with the address on the order; change it to send it elsewhere.</span>
+            <% if (err("email")) { %><span class="error-text" id="email-error"><%= err("email") %></span><% } %>
+          </div>
+          <button type="submit" class="btn btn-primary btn-lg">Start audit (uses 1 credit)</button>
+        </form>
+      <% } %>
+    </div>
+
+    <div class="card">
+      <h2 class="card-title">Audits with this code</h2>
+      <% if (audits.length === 0) { %>
+        <p class="muted mb-0">No audits yet. Start one on the left and it will appear here.</p>
+      <% } else { %>
+        <div class="table-wrap mb-0">
+          <table class="table table-compact">
+            <caption class="visually-hidden">Audits started with this code</caption>
+            <thead>
+              <tr>
+                <th scope="col">Website</th>
+                <th scope="col">Date</th>
+                <th scope="col">Status</th>
+                <th scope="col">Report</th>
+              </tr>
+            </thead>
+            <tbody>
+              <% audits.forEach((audit) => { %>
+                <tr>
+                  <td class="break"><%= audit.url %></td>
+                  <td><%= shortDate(audit.created_at) %></td>
+                  <td>
+                    <span class="badge <%= audit.status === "ready" ? "badge-success" : audit.status === "failed" ? "badge-danger" : "badge-info" %>">
+                      <%= statusLabels[audit.status] || audit.status %>
+                    </span>
+                  </td>
+                  <td><a href="/r/<%= audit.token %>">Open</a></td>
+                </tr>
+              <% }) %>
+            </tbody>
+          </table>
+        </div>
+      <% } %>
+    </div>
+  </div>
+
+  <p class="small muted mt-4">
+    Automated checks find roughly 30-40% of WCAG issues. This is an automated audit plus a manual checklist,
+    not a legal opinion or a compliance certification.
+  </p>
+</section>

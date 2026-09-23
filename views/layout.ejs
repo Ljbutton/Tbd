@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title><%= title === "AccessAudit" ? title : title + " | AccessAudit" %></title>
+  <link rel="icon" href="/logo.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/styles.css">
+<%- head %>
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to main content</a>
+  <header class="site-header">
+    <div class="container site-header__inner">
+      <a class="brand" href="/">
+        <img src="/logo.svg" alt="" width="28" height="28">
+        <span>AccessAudit</span>
+      </a>
+      <nav class="site-nav" aria-label="Main">
+        <ul>
+          <li><a href="/#scan">Free scan</a></li>
+          <li><a href="/#pricing">Pricing</a></li>
+          <li><a href="/#agencies">Agencies</a></li>
+          <li><a href="/#faq">FAQ</a></li>
+        </ul>
+      </nav>
+    </div>
+  </header>
+  <main id="main" class="site-main" tabindex="-1">
+<%- body %>
+  </main>
+  <footer class="site-footer">
+    <div class="container">
+      <p class="disclaimer">Automated checks find roughly 30-40% of WCAG issues. This is an automated audit plus a manual checklist, not a legal opinion or a compliance certification.</p>
+      <p>AccessAudit is an automated testing tool. It is not a law firm and does not provide legal advice.</p>
+      <div class="site-footer__row">
+        <ul class="footer-links">
+          <li><a href="/legal/terms">Terms</a></li>
+          <li><a href="/legal/privacy">Privacy</a></li>
+        </ul>
+        <% if (mockPayments) { %>
+        <span class="chip chip-test" title="No Stripe key is configured: checkout is simulated and no card is charged">TEST MODE</span>
+        <% } %>
+      </div>
+    </div>
+  </footer>
+  <script src="/app.js" defer></script>
+</body>
+</html>
