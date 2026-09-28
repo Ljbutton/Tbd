@@ -12,6 +12,7 @@ useFreshDataDir(".report-route");
 const { createApp } = await import("../../src/server.js");
 const { createAudit, getAudit, insertFindings, insertPages, reportFilePaths, updateAudit, latestRescanOf } = await import("../../src/audits.js");
 const { runnerStats } = await import("../../src/jobs/runner.js");
+const { config } = await import("../../src/config.js");
 const { buildMockNarrative } = await import("../../src/narrative/mock.js");
 const { buildSummary } = await import("../../src/jobs/audit.js");
 const { describeFailure, downloadName, rescanBlocker, screenshotTokenAllowed } = await import("../../src/routes/report.js");
@@ -133,7 +134,9 @@ describe("GET /r/:token", () => {
     expect(html).toContain(`data-poll-url="/api/audits/${queued.token}/status"`);
     expect(html).toContain("Waiting in line");
     expect(html).toContain('data-poll-field="progressPages"');
-    expect(html).toContain('http-equiv="refresh"');
+    // No timed reload (WCAG 2.2.1): no-JS visitors get a refresh link instead.
+    expect(html).not.toContain('http-equiv="refresh"');
+    expect(html).toContain(`<a href="/r/${queued.token}">Refresh this page</a>`);
   });
 
   it("renders the held and failed states", async () => {
@@ -146,7 +149,7 @@ describe("GET /r/:token", () => {
     const failed = createAudit({ email: "f@example.com", url: `${SITE}/`, origin: SITE, page_limit: 15, white_label: 0, tier: "single" });
     updateAudit(failed.id, { status: "failed", error: "start_url_unreachable: page.goto: net::ERR_CONNECTION_REFUSED at http://127.0.0.1:4100/" });
     const failedHtml = await (await get(`/r/${failed.token}`)).text();
-    expect(failedHtml).toContain("reply to your receipt email for a refund or re-run");
+    expect(failedHtml).toContain("Reply to that email for a re-run or a refund");
     expect(failedHtml).toContain("net::ERR_CONNECTION_REFUSED");
     expect(failedHtml).not.toContain("page.goto");
   });
@@ -276,5 +279,46 @@ describe("helpers", () => {
     expect(describeFailure({ url: "https://x.test/", error: "start_url_unreachable: page.goto: boom" })).toBe(
       "We couldn't load https://x.test/ (boom). Check that the address is right and the site is online.",
     );
+  });
+});
+
+describe("POST /admin/audits/:id/rerun with a corrected address", () => {
+  const auth = { authorization: `Basic ${Buffer.from("admin:admin").toString("base64")}` };
+  const rerun = (id: string, url: string) =>
+    get(`/admin/audits/${id}/rerun`, {
+      method: "POST",
+      headers: { ...auth, "content-type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({ url }).toString(),
+    });
+
+  it("scans the new address after checking it like any buyer-entered URL", async () => {
+    const failed = createAudit({ email: "typo@example.com", url: `${SITE}/wrong`, origin: SITE, page_limit: 15, white_label: 0, tier: "single" });
+    updateAudit(failed.id, { status: "failed", error: "start_url_unreachable: 404" });
+
+    config.allowPrivateTargets = false;
+    const blocked = await rerun(failed.id, "http://127.0.0.1:4200/shop");
+    expect(blocked.status).toBe(400);
+    expect(await blocked.text()).toContain("private or internal network");
+    expect(getAudit(failed.id)).toMatchObject({ url: `${SITE}/wrong`, status: "failed" });
+
+    config.allowPrivateTargets = true;
+    try {
+      const res = await rerun(failed.id, "http://127.0.0.1:4200/shop");
+      expect(res.status).toBe(303);
+      const row = getAudit(failed.id);
+      expect(row).toMatchObject({ url: "http://127.0.0.1:4200/shop", origin: "http://127.0.0.1:4200", status: "queued", error: null });
+      expect(row?.log).toContain(`admin: address changed from ${SITE}/wrong to http://127.0.0.1:4200/shop`);
+    } finally {
+      config.allowPrivateTargets = false;
+    }
+  });
+
+  it("keeps a re-scan on the original address", async () => {
+    const rescan = createAudit({ email: "r@example.com", url: `${SITE}/`, origin: SITE, page_limit: 15, white_label: 0, tier: "single", rescan_of: readyId });
+    updateAudit(rescan.id, { status: "failed", error: "timeout" });
+    const res = await rerun(rescan.id, "https://other.example/");
+    expect(res.status).toBe(400);
+    expect(await res.text()).toContain("keeps the original audit");
+    expect(getAudit(rescan.id)).toMatchObject({ url: `${SITE}/`, status: "failed" });
   });
 });

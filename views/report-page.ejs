@@ -29,7 +29,7 @@
     <p class="small muted mb-0" data-poll-field="note"><%= audit.progress_note || "" %></p>
     <p class="small muted mt-2 mb-0">
       This page updates itself every few seconds; most audits finish in 5-10 minutes. Bookmark it or keep the link from your email.
-      <noscript>Without JavaScript the page reloads every 10 seconds.</noscript>
+      <noscript>With JavaScript off it won't update by itself: <a href="<%= base %>">Refresh this page</a> to see the latest progress.</noscript>
     </p>
   </div>
   <p class="small muted mt-2">
@@ -46,7 +46,7 @@
     <% if (preview.length === 0) { %>
       <p class="mb-0">The automated checks found no issues on the pages we scanned. The manual review covers what a tool cannot judge.</p>
     <% } else { %>
-      <div class="table-wrap mb-0">
+      <div class="table-wrap mb-0" tabindex="0" role="region" aria-label="Automated findings">
         <table class="table table-compact">
           <caption class="visually-hidden">Automated findings ranked by priority</caption>
           <thead>
@@ -81,7 +81,7 @@
     <strong>This audit could not be completed.</strong> <%= failure %>
   </div>
   <div class="card">
-    <p class="mb-0">We've been notified; reply to your receipt email for a refund or re-run. If the address was wrong or the site was offline, tell us the right address and we'll run it again.</p>
+    <p class="mb-0">We've emailed you about this, and failed audits are flagged for us to look at. Reply to that email for a re-run or a refund. If the address was wrong or the site was offline, tell us the right address and we'll run it again.</p>
   </div>
 
 <% } else { %>
@@ -128,7 +128,7 @@
       The report files are available above, but the page version could not be built because the scan summary is missing. Reply to your receipt email and we'll fix it.
     </div>
     <% if (preview.length > 0) { %>
-      <div class="table-wrap">
+      <div class="table-wrap" tabindex="0" role="region" aria-label="Findings">
         <table class="table table-compact">
           <caption class="visually-hidden">Findings ranked by priority</caption>
           <thead>

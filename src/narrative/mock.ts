@@ -69,10 +69,16 @@ function safeFixHtml(finding: Finding, fixHtml: ((html: string) => string) | und
 const NEEDS_MANUAL_NOTE =
   "Our automated check couldn't confirm this on its own, so treat it as something to verify by hand on the pages listed below.";
 
-/** Dictionary entry for one finding, with the example markup as before/after. */
+/**
+ * Dictionary entry for one finding, with the example markup as before/after.
+ * When the transformer leaves the markup unchanged (a CSS-only fix such as
+ * contrast, or a value it has no mapping for) there is no "after" to show:
+ * afterHtml is null and the fix lives in fixSteps.
+ */
 export function dictionaryFindingNarrative(finding: Finding): FindingNarrative {
   const rule = getRule(finding.ruleId, { help: finding.help, helpUrl: finding.helpUrl });
   const plainEnglish = finding.confidence === "needs_manual" ? `${rule.plainEnglish} ${NEEDS_MANUAL_NOTE}` : rule.plainEnglish;
+  const after = safeFixHtml(finding, rule.fixHtml);
   return {
     ruleId: finding.ruleId,
     title: rule.title,
@@ -80,7 +86,7 @@ export function dictionaryFindingNarrative(finding: Finding): FindingNarrative {
     whyItMatters: rule.whyItMatters,
     fixSteps: [...rule.fixSteps],
     beforeHtml: finding.exampleHtml,
-    afterHtml: safeFixHtml(finding, rule.fixHtml),
+    afterHtml: after === finding.exampleHtml ? null : after,
     effort: rule.effort,
   };
 }
@@ -88,9 +94,17 @@ export function dictionaryFindingNarrative(finding: Finding): FindingNarrative {
 export function buildExecutiveSummary(findings: Finding[], summary: AuditSummary, siteMeta: SiteMeta): string {
   const ranked = [...findings].sort((a, b) => a.rank - b.rank);
   const site = siteName(siteMeta);
-  const scope = `We scanned ${plural(summary.pagesScanned, "page")} of ${site} (${siteMeta.origin}) at desktop and mobile sizes`;
+  // Pages found but not covered: said up front so a short scan never reads as a full one.
+  const failed = summary.pagesFailed > 0 ? summary.pagesFailed : 0;
+  const skipped = summary.pagesSkipped !== undefined && summary.pagesSkipped > 0 ? summary.pagesSkipped : 0;
+  const gaps: string[] = [];
+  if (failed > 0) gaps.push(`${failed} of the ${summary.pagesRequested} pages we found could not be loaded`);
+  if (skipped > 0) gaps.push(`${failed > 0 ? skipped : `${skipped} of the ${summary.pagesRequested} pages we found`} ${skipped === 1 ? "was" : "were"} not scanned because the audit reached its time limit`);
+  const coverage = gaps.length > 0 ? ` (${joinNatural(gaps)})` : "";
+  const scope = `We scanned ${plural(summary.pagesScanned, "page")} of ${site} (${siteMeta.origin}) at desktop and mobile sizes${coverage}`;
   if (ranked.length === 0) {
-    return `${scope} and the automated checks found no issues. That is a good start, not a finish: automated checks find roughly 30-40% of WCAG issues; the manual checks in section 5 cover the rest.`;
+    const where = gaps.length > 0 ? " on the pages we scanned" : "";
+    return `${scope} and the automated checks found no issues${where}. That is a good start, not a finish: automated checks find roughly 30-40% of WCAG issues; the manual checks in section 5 cover the rest.`;
   }
   const severe = summary.byImpact.critical + summary.byImpact.serious;
   const topTitles = ranked.slice(0, 3).map(titleFor);

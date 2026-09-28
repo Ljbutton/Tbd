@@ -3,6 +3,7 @@
 
 import type { BrowserContext, Page } from "playwright";
 import { closeContext, newScanContext } from "./browser.js";
+import { egressFailure } from "./egress.js";
 import type { Robots } from "./robots.js";
 import { isProbablyHtml, normalizeUrl, sameOrigin } from "./url.js";
 
@@ -10,6 +11,12 @@ export const CRAWL_CAP_MS = 3 * 60 * 1000;
 export const CRAWL_NAVIGATION_TIMEOUT_MS = 30000;
 export const CRAWL_SETTLE_MS = 1000;
 export const START_URL_UNREACHABLE = "start_url_unreachable";
+/**
+ * Query-string variants of one path (`?page=2`, `?sort=price`) that are queued
+ * normally; further variants wait until every other discovered URL has been
+ * visited, so pagination chains and facets cannot crowd out distinct pages.
+ */
+export const MAX_QUERY_VARIANTS_PER_PATH = 2;
 
 export interface CrawlProgress {
   /** Pages accepted so far (what will be scanned). */
@@ -59,6 +66,27 @@ function robotsPath(url: string): string {
   return `${parsed.pathname}${parsed.search}`;
 }
 
+function originOf(url: string): string {
+  try {
+    const origin = new URL(url).origin;
+    return origin === "null" ? url : origin;
+  } catch {
+    return url;
+  }
+}
+
+/**
+ * Where a start-page redirect may land and still be the buyer's site: the same
+ * origin (www-insensitive) or its http/https twin on the default port.
+ */
+function isSameSiteRedirect(final: string, start: string): boolean {
+  if (sameOrigin(final, start)) return true;
+  const twin = new URL(start);
+  if (twin.port !== "") return false;
+  twin.protocol = twin.protocol === "https:" ? "http:" : "https:";
+  return sameOrigin(final, twin);
+}
+
 async function collectHrefs(page: Page): Promise<string[]> {
   try {
     return await page.$$eval("a[href]", (anchors) =>
@@ -74,10 +102,16 @@ async function collectHrefs(page: Page): Promise<string[]> {
  * URLs in discovery order (the start URL first). Discovered links must be
  * same-origin (www-insensitive), look like HTML, be allowed by robots.txt and
  * not already seen; the start URL is always kept even if robots disallows it.
- * Responses whose content type is not HTML, error statuses on discovered
- * pages and failed navigations are reported through `onProgress` and skipped.
+ * Each page is recorded under the URL the browser ended up on after
+ * redirects, so an alias of a page already found is skipped as a duplicate
+ * and a link that redirects off-site is skipped rather than scanned as the
+ * customer's page. Responses whose content type is not HTML, error statuses
+ * on discovered pages and failed navigations are reported through
+ * `onProgress` and skipped. Query-string variants of a path beyond
+ * MAX_QUERY_VARIANTS_PER_PATH are visited only once nothing else is queued.
  * The whole phase stops after 3 minutes with whatever was found. Throws
- * StartUrlUnreachableError when the start URL cannot be loaded.
+ * StartUrlUnreachableError when the start URL cannot be loaded, answers with
+ * an HTTP error status, is not HTML or redirects to a different site.
  */
 export async function crawl(options: CrawlOptions): Promise<string[]> {
   const { robots } = options;
@@ -91,6 +125,10 @@ export async function crawl(options: CrawlOptions): Promise<string[]> {
   const start = normalizeUrl(options.startUrl);
   const siteOrigins = new Set<string>([new URL(start).origin]);
   const queue: string[] = [start];
+  /** Query variants past MAX_QUERY_VARIANTS_PER_PATH; visited only when `queue` is empty. */
+  const deferred: string[] = [];
+  const queryVariants = new Map<string, number>();
+  const pending = (): number => queue.length + deferred.length;
   const seen = new Set<string>([start]);
   const found: string[] = [];
 
@@ -100,19 +138,19 @@ export async function crawl(options: CrawlOptions): Promise<string[]> {
     context = await newScanContext("desktop");
     page = await context.newPage();
 
-    while (queue.length > 0 && found.length < pageLimit) {
+    while (pending() > 0 && found.length < pageLimit) {
       const elapsed = Date.now() - startedAt;
       if (elapsed >= capMs) {
         report({
           kind: "capped",
           found: found.length,
-          queued: queue.length,
-          url: queue[0] ?? start,
+          queued: pending(),
+          url: queue[0] ?? deferred[0] ?? start,
           message: `crawl time cap reached after ${Math.round(elapsed / 1000)}s; continuing with ${found.length} pages`,
         });
         break;
       }
-      const url = queue.shift() as string;
+      const url = (queue.length > 0 ? queue.shift() : deferred.shift()) as string;
       const isStart = url === start;
       const navTimeout = Math.max(1000, Math.min(CRAWL_NAVIGATION_TIMEOUT_MS, capMs - elapsed));
 
@@ -121,45 +159,70 @@ export async function crawl(options: CrawlOptions): Promise<string[]> {
       try {
         const response = await page.goto(url, { waitUntil: "domcontentloaded", timeout: navTimeout });
         if (response === null) throw new Error("no response");
+        // Blocked or unreachable: the egress proxy answered, not the site.
+        const egress = egressFailure(response.headers());
+        if (egress !== null) throw new Error(egress);
         status = response.status();
         contentType = response.headers()["content-type"];
       } catch (err) {
         const reason = errorMessage(err);
         if (isStart) throw new StartUrlUnreachableError(reason);
-        report({ kind: "failed", found: found.length, queued: queue.length, url, message: `could not load ${url} (${reason})` });
+        report({ kind: "failed", found: found.length, queued: pending(), url, message: `could not load ${url} (${reason})` });
         continue;
       }
 
-      if (!isHtmlContentType(contentType)) {
-        if (isStart) throw new StartUrlUnreachableError(`start page is not HTML (${contentType ?? "unknown content type"})`);
-        report({ kind: "skipped", found: found.length, queued: queue.length, url, message: `skipped ${url} (content-type ${contentType})` });
+      // A 404/5xx or bot-challenge page is not the buyer's site: fail on the start page, skip elsewhere.
+      if (status !== null && status >= 400) {
+        if (isStart) throw new StartUrlUnreachableError(`start page returned HTTP ${status}`);
+        report({ kind: "skipped", found: found.length, queued: pending(), url, message: `skipped ${url} (HTTP ${status})` });
         continue;
       }
-      if (!isStart && status !== null && status >= 400) {
-        report({ kind: "skipped", found: found.length, queued: queue.length, url, message: `skipped ${url} (HTTP ${status})` });
+      if (!isHtmlContentType(contentType)) {
+        if (isStart) throw new StartUrlUnreachableError(`start page is not HTML (${contentType ?? "unknown content type"})`);
+        report({ kind: "skipped", found: found.length, queued: pending(), url, message: `skipped ${url} (content-type ${contentType})` });
         continue;
       }
 
       await page.waitForTimeout(Math.min(CRAWL_SETTLE_MS, Math.max(0, capMs - (Date.now() - startedAt))));
 
-      // A redirect on the start page (http -> https, bare -> www) moves the site; accept links from there too.
+      // Where the browser ended up after redirects; the page is recorded under that URL.
       const finalUrl = page.url();
+      let final: string;
+      try {
+        final = normalizeUrl(finalUrl);
+      } catch {
+        final = finalUrl;
+      }
       if (isStart) {
-        try {
-          const finalOrigin = new URL(finalUrl).origin;
-          if (finalOrigin.startsWith("http")) siteOrigins.add(finalOrigin);
-        } catch {
-          // Keep the original origin.
+        // http -> https and bare -> www keep the site (links from there count as same-site); anything else is another site.
+        if (!isSameSiteRedirect(final, start)) {
+          throw new StartUrlUnreachableError(`start page redirects to ${originOf(final)}, a different site`);
+        }
+        siteOrigins.add(new URL(final).origin);
+      } else if (final !== url) {
+        if (![...siteOrigins].some((origin) => sameOrigin(final, origin))) {
+          report({ kind: "skipped", found: found.length, queued: pending(), url, message: `skipped ${url} (redirects off-site to ${originOf(final)})` });
+          continue;
+        }
+        if (seen.has(final)) {
+          report({ kind: "skipped", found: found.length, queued: pending(), url, message: `skipped ${url} (redirects to ${final}, already found or queued)` });
+          continue;
+        }
+        if (!robots.isAllowed(robotsPath(final))) {
+          seen.add(final);
+          report({ kind: "skipped", found: found.length, queued: pending(), url, message: `skipped ${url} (redirects to ${final}, disallowed by robots.txt)` });
+          continue;
         }
       }
+      seen.add(final);
 
-      found.push(url);
+      found.push(final);
       report({
         kind: "visited",
         found: found.length,
-        queued: queue.length,
-        url,
-        message: `found ${url}${status !== null ? ` (HTTP ${status})` : ""}`,
+        queued: pending(),
+        url: final,
+        message: `found ${final}${final !== url ? ` (redirected from ${url})` : ""}${status !== null ? ` (HTTP ${status})` : ""}`,
       });
       if (found.length >= pageLimit) break;
 
@@ -178,15 +241,26 @@ export async function crawl(options: CrawlOptions): Promise<string[]> {
         if (![...siteOrigins].some((origin) => sameOrigin(candidate, origin))) continue;
         if (!robots.isAllowed(robotsPath(candidate))) {
           seen.add(candidate);
-          report({ kind: "skipped", found: found.length, queued: queue.length, url: candidate, message: `skipped ${candidate} (disallowed by robots.txt)` });
+          report({ kind: "skipped", found: found.length, queued: pending(), url: candidate, message: `skipped ${candidate} (disallowed by robots.txt)` });
           continue;
         }
         seen.add(candidate);
+        const parsed = new URL(candidate);
+        if (parsed.search !== "") {
+          const pathKey = `${parsed.origin}${parsed.pathname}`;
+          const variants = (queryVariants.get(pathKey) ?? 0) + 1;
+          queryVariants.set(pathKey, variants);
+          if (variants > MAX_QUERY_VARIANTS_PER_PATH) {
+            deferred.push(candidate);
+            added += 1;
+            continue;
+          }
+        }
         queue.push(candidate);
         added += 1;
       }
       if (added > 0) {
-        report({ kind: "visited", found: found.length, queued: queue.length, url, message: `queued ${added} new link${added === 1 ? "" : "s"} from ${url}` });
+        report({ kind: "visited", found: found.length, queued: pending(), url: final, message: `queued ${added} new link${added === 1 ? "" : "s"} from ${final}` });
       }
     }
   } finally {
@@ -200,6 +274,6 @@ export async function crawl(options: CrawlOptions): Promise<string[]> {
     await closeContext(context);
   }
 
-  report({ kind: "done", found: found.length, queued: queue.length, url: start, message: `Found ${found.length} page${found.length === 1 ? "" : "s"}` });
+  report({ kind: "done", found: found.length, queued: pending(), url: start, message: `Found ${found.length} page${found.length === 1 ? "" : "s"}` });
   return found;
 }

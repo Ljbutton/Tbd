@@ -7,6 +7,13 @@ import { IMPACT_WEIGHTS, categoryFor, litigationWeight } from "./litigation.js";
 const IMPACT_ORDER: readonly Impact[] = ["critical", "serious", "moderate", "minor"];
 const MAX_AFFECTED_URLS = 30;
 
+/** Elements a rule flagged on one scan: the true count, not the (capped) stored examples. */
+export function violationNodeCount(violation: RawViolation): number {
+  return typeof violation.nodeCount === "number" && Number.isFinite(violation.nodeCount)
+    ? Math.max(violation.nodeCount, violation.nodes.length)
+    : violation.nodes.length;
+}
+
 /** Per-page bookkeeping for one rule. */
 interface PageHit {
   url: string;
@@ -67,7 +74,7 @@ function record(
     hit = { url: scan.url, desktopNodes: null, mobileNodes: null, desktopExample: null, mobileExample: null };
     entry.pages.set(scan.url, hit);
   }
-  const count = violation.nodes.length;
+  const count = violationNodeCount(violation);
   if (scan.viewport === "mobile") {
     hit.mobileNodes = (hit.mobileNodes ?? 0) + count;
     if (!hit.mobileExample) hit.mobileExample = firstNode(violation);

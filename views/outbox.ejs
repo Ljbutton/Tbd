@@ -33,7 +33,7 @@
   <% if (emails.length === 0) { %>
     <p class="muted">Nothing here yet. Complete a test checkout or let an audit finish and its email will show up.</p>
   <% } else { %>
-    <div class="table-wrap">
+    <div class="table-wrap" tabindex="0" role="region" aria-label="Stored emails">
       <table class="table table-compact">
         <caption class="visually-hidden">Stored emails, newest first</caption>
         <thead>

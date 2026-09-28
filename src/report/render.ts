@@ -123,6 +123,36 @@ function parseDate(iso: string | null | undefined): Date | null {
 }
 
 /** "September 23, 2026" (UTC). Falls back to the raw string when it is not a date. */
+const WCAG_CRITERION_TAG = /^wcag(\d)(\d)(\d{1,2})$/i;
+const WCAG_LEVEL_TAG = /^wcag2\d?(a{1,3})$/i;
+
+/**
+ * axe tags as a reader would quote them: ["wcag2a", "wcag111"] becomes
+ * "WCAG 1.1.1 (Level A)" so it matches the success-criterion numbers in a
+ * letter or a guideline. Returns "" when there is nothing WCAG to show.
+ */
+export function formatWcagTags(tags: readonly string[]): string {
+  const criteria: string[] = [];
+  let level: string | null = null;
+  for (const tag of tags) {
+    const criterion = WCAG_CRITERION_TAG.exec(tag);
+    if (criterion) {
+      const number = `${criterion[1]}.${criterion[2]}.${criterion[3]}`;
+      if (!criteria.includes(number)) criteria.push(number);
+      continue;
+    }
+    const levelMatch = WCAG_LEVEL_TAG.exec(tag);
+    if (levelMatch?.[1]) {
+      const found = levelMatch[1].toUpperCase();
+      if (level === null || found.length < level.length) level = found;
+    }
+  }
+  if (criteria.length > 0) return `WCAG ${criteria.join(", ")}${level ? ` (Level ${level})` : ""}`;
+  if (level) return `WCAG Level ${level}`;
+  if (tags.some((tag) => tag.toLowerCase() === "best-practice")) return "Best practice (not a WCAG success criterion)";
+  return "";
+}
+
 export function formatDate(iso: string | null | undefined): string {
   const date = parseDate(iso);
   if (!date) return (iso ?? "").trim();
@@ -439,6 +469,8 @@ interface FindingView extends IssueRowView {
   text: FindingNarrative;
   categoryLabel: string;
   wcagTags: string[];
+  /** Human form of wcagTags ("WCAG 1.1.1 (Level A)"); raw tags stay in the JSON/CSV exports. */
+  wcagLabel: string;
   helpUrl: string | null;
   where: string[];
   moreCount: number;
@@ -499,6 +531,7 @@ function findingView(finding: Finding, text: FindingNarrative, screenshotUrl: (f
     text,
     categoryLabel: categoryLabel(finding.category),
     wcagTags: finding.wcagTags.filter((tag) => typeof tag === "string" && tag.trim() !== ""),
+    wcagLabel: formatWcagTags(finding.wcagTags.filter((tag) => typeof tag === "string")),
     helpUrl: safeHttpUrl(finding.helpUrl),
     where,
     moreCount,
@@ -561,6 +594,7 @@ export function renderReportHtml(options: RenderReportOptions): string {
     pagesRequested: count(summary.pagesRequested),
     pagesScanned,
     pagesFailed: count(summary.pagesFailed),
+    pagesSkipped: count(summary.pagesSkipped),
     findingsCount: count(summary.findingsCount),
     criticalSerious: count(summary.byImpact?.critical) + count(summary.byImpact?.serious),
     elements: count(summary.totalViolationNodes),

@@ -55,12 +55,29 @@ function findOpeningTag(html: string, names?: readonly string[]): OpeningTag | n
   return null;
 }
 
-/** Reads an attribute value from raw attribute text (quoted or bare); null when absent or valueless. */
+const NAMED_ENTITIES: Record<string, string> = { amp: "&", lt: "<", gt: ">", quot: '"', apos: "'" };
+
+/** Decodes the character references axe's outerHTML uses in attribute values (one pass, so "&amp;lt;" stays "&lt;"). */
+function decodeEntities(value: string): string {
+  return value.replace(/&(#[xX][0-9a-fA-F]+|#\d+|[a-zA-Z]+);/g, (whole, body: string) => {
+    if (body.startsWith("#")) {
+      const code = body[1] === "x" || body[1] === "X" ? Number.parseInt(body.slice(2), 16) : Number.parseInt(body.slice(1), 10);
+      return Number.isInteger(code) && code > 0 && code <= 0x10ffff ? String.fromCodePoint(code) : whole;
+    }
+    return NAMED_ENTITIES[body.toLowerCase()] ?? whole;
+  });
+}
+
+/**
+ * Reads an attribute value from raw attribute text (quoted or bare); null when
+ * absent or valueless. The value comes back decoded (axe's outerHTML encodes
+ * "&" and quotes), so callers escape it exactly once when writing it out.
+ */
 function readAttr(attrs: string, attrName: string): string | null {
   const pattern = new RegExp(`(?:^|\\s)${attrName}\\s*=\\s*(?:"([^"]*)"|'([^']*)'|([^\\s"'>/]+))`, "i");
   const match = pattern.exec(attrs);
   if (!match) return null;
-  return match[1] ?? match[2] ?? match[3] ?? "";
+  return decodeEntities(match[1] ?? match[2] ?? match[3] ?? "");
 }
 
 function hasAttr(attrs: string, attrName: string): boolean {

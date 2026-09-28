@@ -34,7 +34,13 @@ function handleCheckoutSession(session: Stripe.Checkout.Session, eventType: stri
     return;
   }
   try {
-    const result = markPaid(orderId, { via: "stripe", sessionId: session.id, paymentIntent: paymentIntentIdOf(session) });
+    const result = markPaid(orderId, {
+      via: "stripe",
+      sessionId: session.id,
+      paymentIntent: paymentIntentIdOf(session),
+      amountCents: session.amount_total,
+      currency: session.currency,
+    });
     console.log(
       "webhook %s: order %s paid (%s)",
       eventType,
@@ -58,12 +64,25 @@ function handleChargeRefunded(charge: Stripe.Charge): void {
     console.log("webhook charge.refunded: no matching order for charge %s, ignoring", charge.id);
     return;
   }
+  // Stripe sends charge.refunded for partial refunds too; only a full refund refunds the order.
+  const fullRefund = charge.refunded === true || charge.amount_refunded >= charge.amount;
+  if (!fullRefund) {
+    console.log(
+      "webhook charge.refunded: order %s partially refunded (%d of %d cents); the order stays %s",
+      order.id,
+      charge.amount_refunded,
+      charge.amount,
+      order.status,
+    );
+    return;
+  }
   markRefunded(order.id);
   console.log(
-    "webhook charge.refunded: order %s marked refunded (%d of %d cents refunded); any running audit continues",
+    "webhook charge.refunded: order %s marked refunded (%d of %d cents refunded)%s; audits already started continue",
     order.id,
     charge.amount_refunded,
     charge.amount,
+    order.product === "pack5" ? ", unused 5-Pack credits cancelled" : "",
   );
 }
 
@@ -114,8 +133,13 @@ router.post(
     try {
       handleStripeEvent(event);
     } catch (err) {
-      // Never make Stripe retry forever over a local bug: log loudly and acknowledge.
+      // Deliberate ignores (no metadata, unknown order, already processed) return
+      // normally above. Anything thrown here (a database error while creating the
+      // audit or code) answers 500 so Stripe retries with backoff; markPaid is
+      // idempotent, so a retry after a partial success is safe.
       console.error("webhook %s (%s) failed: %s", event.type, event.id, err instanceof Error ? err.stack ?? err.message : String(err));
+      res.status(500).json({ error: "webhook_handler_failed", message: "The event could not be applied; Stripe will retry it." });
+      return;
     }
     res.status(200).json({ received: true });
   }),

@@ -292,7 +292,7 @@ test("an unreachable start URL fails with a plain-English reason and no download
   const notice = page.getByTestId("failed-notice");
   await expect(notice).toContainText("This audit could not be completed.");
   await expect(notice).toContainText(`We couldn't load ${deadUrl}`);
-  await expect(page.getByText("reply to your receipt email for a refund or re-run")).toBeVisible();
+  await expect(page.getByText("Reply to that email for a re-run or a refund")).toBeVisible();
   expect(await page.getByRole("link", { name: "Download PDF" }).count()).toBe(0);
   expect((await request.get(`${reportPath}/pdf`)).status()).toBe(404);
   expect((await request.get(`${reportPath}/json`)).status()).toBe(404);

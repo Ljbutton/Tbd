@@ -20,6 +20,7 @@ export const router = express.Router();
 
 const MAX_EMAIL = 254;
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const CANCELLED_MESSAGE = "This code was cancelled after a refund, so it can't start new audits.";
 
 export const AUDIT_STATUS_LABELS: Record<AuditStatus, string> = {
   queued: "Waiting in line",
@@ -62,12 +63,14 @@ async function renderCreditsPage(
   status = 200,
 ): Promise<void> {
   const audits = auditsForCode(code.id);
+  const order = getOrder(code.order_id);
   await renderPage(
     res,
     "credits",
     {
       title: `${code.agency_name ?? "Agency"} credits`,
       code,
+      cancelled: order?.status === "refunded",
       audits,
       statusLabels: AUDIT_STATUS_LABELS,
       values,
@@ -142,7 +145,9 @@ router.post(
     }
     if (values.email === "") errors.email = "Enter the email address that should receive the report.";
     else if (values.email.length > MAX_EMAIL || !EMAIL_PATTERN.test(values.email)) errors.email = "That email address doesn't look right.";
-    if (code.credits_left <= 0) errors.credits = "No credits left on this code. Buy another 5-Pack to keep going.";
+    if (code.credits_left <= 0) {
+      errors.credits = getOrder(code.order_id)?.status === "refunded" ? CANCELLED_MESSAGE : "No credits left on this code. Buy another 5-Pack to keep going.";
+    }
 
     if (Object.keys(errors).length > 0 || target === null) {
       await renderCreditsPage(res, code, values, errors, 400);
@@ -155,7 +160,7 @@ router.post(
     } catch (err) {
       // Lost a race for the last credit: the transaction rolled back, show the form again.
       if (err instanceof HttpError && err.code === "no_credits_left") {
-        errors.credits = err.message;
+        errors.credits = getOrder(code.order_id)?.status === "refunded" ? CANCELLED_MESSAGE : err.message;
         await renderCreditsPage(res, code, values, errors, 400);
         return;
       }

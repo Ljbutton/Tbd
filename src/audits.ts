@@ -6,6 +6,7 @@ import { dataPaths } from "./config.js";
 import { db, nowIso } from "./db.js";
 import { computeDelta } from "./report/delta.js";
 import { findingToRow, rowToFinding } from "./report/finding-rows.js";
+import { violationNodeCount } from "./report/rank.js";
 import type {
   AuditRow,
   AuditStatus,
@@ -260,7 +261,7 @@ export function pagesForAudit(auditId: string): PageRow[] {
 }
 
 function countNodes(scan: PageScan): number {
-  return scan.violations.reduce((sum, v) => sum + v.nodes.length, 0);
+  return scan.violations.reduce((sum, v) => sum + violationNodeCount(v), 0);
 }
 
 /** Stores one pages row per PageScan (one per url+viewport). */

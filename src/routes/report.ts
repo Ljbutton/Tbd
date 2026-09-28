@@ -29,7 +29,7 @@ import {
 } from "../audits.js";
 import { PRODUCTS } from "../config.js";
 import { db } from "../db.js";
-import { RESCAN_WINDOW_DAYS, rescanDeadline } from "../email/templates.js";
+import { RESCAN_WINDOW_DAYS, describeAuditFailure, rescanDeadline } from "../email/templates.js";
 import { enqueueAudit } from "../jobs/runner.js";
 import { toIssueTableHtml, toRemediationRecord } from "../report/exports.js";
 import {
@@ -159,19 +159,8 @@ function previewRows(findings: Finding[], narrative: Narrative | null): FindingP
   });
 }
 
-/** Human wording for audits.error (the raw message stays in the admin log). */
-export function describeFailure(audit: Pick<AuditRow, "error" | "url">): string {
-  const error = (audit.error ?? "").trim();
-  if (error.startsWith("start_url_unreachable:")) {
-    // Playwright prefixes navigation errors with the call name; the buyer only needs the network reason.
-    const reason = error.slice("start_url_unreachable:".length).trim().replace(/^page\.goto:\s*/, "");
-    return `We couldn't load ${audit.url}${reason ? ` (${reason})` : ""}. Check that the address is right and the site is online.`;
-  }
-  if (error === "timeout") return "The scan ran out of time before the report could be built.";
-  if (error === "crashed twice") return "The scan stopped unexpectedly twice.";
-  if (error === "") return "The scan stopped before the report could be built.";
-  return `The scan stopped with an error: ${error}`;
-}
+/** Human wording for audits.error (the raw message stays in the admin log); shared with the failure email. */
+export const describeFailure = describeAuditFailure;
 
 /** "accessaudit-{hostname}-{yyyy-mm-dd}.{ext}" (spec 6.5). */
 export function downloadName(audit: AuditRow, ext: string): string {
@@ -258,9 +247,8 @@ router.get(
 
     const locals: Record<string, unknown> = {
       title: state === "ready" ? `Accessibility audit of ${hostname}` : `${STATUS_LABELS[audit.status]}: ${hostname}`,
-      head:
-        `<meta name="robots" content="${ROBOTS_HEADER}">` +
-        (state === "progress" ? `<noscript><meta http-equiv="refresh" content="10"></noscript>` : ""),
+      // No timed reload for no-JS visitors (WCAG 2.2.1): the progress card links to "Refresh this page" instead.
+      head: `<meta name="robots" content="${ROBOTS_HEADER}">`,
       audit,
       state,
       hostname,

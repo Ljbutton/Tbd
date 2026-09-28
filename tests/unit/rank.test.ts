@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { CATEGORIES, IMPACT_WEIGHTS, LITIGATION, categoryFor, litigationWeight } from "../../src/report/litigation.js";
-import { compareFindings, rankFindings, scoreFinding } from "../../src/report/rank.js";
+import { compareFindings, rankFindings, scoreFinding, violationNodeCount } from "../../src/report/rank.js";
 import type { Finding, Impact, PageScan, RawNode, RawViolation, Viewport } from "../../src/types.js";
 
 function nodes(count: number, prefix = "el"): RawNode[] {
@@ -235,6 +235,22 @@ describe("rankFindings", () => {
     expect(list?.nodesTotal).toBe(0);
     expect(list?.exampleHtml).toBeNull();
     expect(list?.exampleSelector).toBeNull();
+  });
+});
+
+describe("true element counts beyond the 25 stored examples", () => {
+  it("counts nodeCount, not the capped example list, and falls back to nodes.length for old rows", () => {
+    const capped: RawViolation = { ...violation("image-alt", "critical", nodes(25)), nodeCount: 80 };
+    expect(violationNodeCount(capped)).toBe(80);
+    expect(violationNodeCount(violation("image-alt", "critical", nodes(7)))).toBe(7);
+
+    const [finding] = rankFindings([
+      scan("http://s/a", "desktop", [capped]),
+      scan("http://s/a", "mobile", [{ ...violation("image-alt", "critical", nodes(25)), nodeCount: 60 }]),
+      scan("http://s/b", "desktop", [{ ...violation("image-alt", "critical", nodes(25)), nodeCount: 40 }]),
+    ]);
+    expect(finding?.nodesTotal).toBe(120);
+    expect(finding?.pagesAffected).toBe(2);
   });
 });
 

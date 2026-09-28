@@ -1,7 +1,8 @@
 // One-time Stripe setup: creates the three products with one-time USD prices,
-// the FOUNDING50 coupon and its promotion code, then prints the env lines to
-// paste into .env. Safe to re-run: existing products (by name), prices (by
-// amount), coupon and promotion code are reused instead of duplicated.
+// the FOUNDING50 coupon (limited to the Agency 5-Pack) and its promotion code,
+// then prints the env lines to paste into .env. Safe to re-run: existing
+// products (by name), prices (by amount), coupon and promotion code are reused
+// instead of duplicated, and a used-up coupon is never replaced.
 //
 //   STRIPE_SECRET_KEY=sk_test_... npm run stripe:setup
 
@@ -80,37 +81,82 @@ async function findOrCreatePrice(product: Stripe.Product, plan: ProductPlan): Pr
   return created;
 }
 
-async function findOrCreateCoupon(): Promise<Stripe.Coupon> {
+function couponProductIds(coupon: Stripe.Coupon): string[] {
+  const products = coupon.applies_to?.products;
+  return Array.isArray(products) ? products : [];
+}
+
+/**
+ * The FOUNDING50 coupon, restricted to the Agency 5-Pack product. An existing
+ * coupon is reused even when its redemptions are used up: re-running this
+ * script must never mint 20 fresh founding seats. applies_to cannot be changed
+ * on an existing coupon, so an unrestricted one from an older setup is replaced.
+ */
+async function findOrCreateCoupon(pack5: Stripe.Product): Promise<Stripe.Coupon> {
   const coupons = await stripe.coupons.list({ limit: 100 }).autoPagingToArray({ limit: LIST_LIMIT });
-  const found = coupons.find(
-    (c) => c.valid && c.name === FOUNDING_COUPON.code && c.amount_off === FOUNDING_COUPON.amountOffCents && c.currency === "usd",
+  const matching = coupons.filter(
+    (c) => c.name === FOUNDING_COUPON.code && c.amount_off === FOUNDING_COUPON.amountOffCents && c.currency === "usd",
   );
+  const restricted = matching.filter((c) => couponProductIds(c).includes(pack5.id));
+  const exhausted = matching.find((c) => !c.valid);
+  const found = restricted.find((c) => c.valid) ?? (exhausted ? restricted[0] ?? exhausted : undefined);
   if (found) {
-    console.log(`coupon ${FOUNDING_COUPON.code} exists (${found.id})`);
+    if (found.valid) {
+      console.log(`coupon ${FOUNDING_COUPON.code} exists (${found.id}, ${found.times_redeemed} of ${found.max_redemptions ?? "unlimited"} redeemed)`);
+    } else {
+      console.warn(
+        `coupon ${FOUNDING_COUPON.code} (${found.id}) is no longer valid (${found.times_redeemed} of ${found.max_redemptions ?? "unlimited"} redeemed): the founding offer has ended, so no new coupon is created.`,
+      );
+    }
     return found;
   }
+  const unrestricted = matching.find((c) => c.valid);
+  if (unrestricted) {
+    console.warn(
+      `coupon ${FOUNDING_COUPON.code} (${unrestricted.id}) is not limited to the Agency 5-Pack; creating a restricted replacement. Delete ${unrestricted.id} in the Stripe dashboard.`,
+    );
+  }
+  // A replacement only gets the seats the old coupon had left.
+  const maxRedemptions = Math.max(1, FOUNDING_COUPON.maxRedemptions - (unrestricted?.times_redeemed ?? 0));
   const created = await stripe.coupons.create({
     name: FOUNDING_COUPON.code,
     amount_off: FOUNDING_COUPON.amountOffCents,
     currency: "usd",
     duration: "once",
-    max_redemptions: FOUNDING_COUPON.maxRedemptions,
+    max_redemptions: maxRedemptions,
+    applies_to: { products: [pack5.id] },
   });
-  console.log(`created coupon ${FOUNDING_COUPON.code} (${created.id}, ${dollars(FOUNDING_COUPON.amountOffCents)} off, max ${FOUNDING_COUPON.maxRedemptions} redemptions)`);
+  console.log(`created coupon ${FOUNDING_COUPON.code} (${created.id}, ${dollars(FOUNDING_COUPON.amountOffCents)} off the Agency 5-Pack, max ${maxRedemptions} redemptions)`);
   return created;
 }
 
-async function findOrCreatePromotionCode(coupon: Stripe.Coupon): Promise<Stripe.PromotionCode> {
+async function findOrCreatePromotionCode(coupon: Stripe.Coupon): Promise<Stripe.PromotionCode | null> {
+  if (!coupon.valid) {
+    console.log(`promotion code ${FOUNDING_COUPON.code}: skipped, its coupon is used up`);
+    return null;
+  }
   const codes = await stripe.promotionCodes.list({ code: FOUNDING_COUPON.code, limit: 100 }).autoPagingToArray({ limit: LIST_LIMIT });
-  const found = codes.find((c) => c.active);
+  const couponIdOf = (c: Stripe.PromotionCode): string | null => {
+    const ref = c.promotion.coupon;
+    return typeof ref === "string" ? ref : ref ? ref.id : null;
+  };
+  const found = codes.find((c) => c.active && couponIdOf(c) === coupon.id);
   if (found) {
     console.log(`promotion code ${FOUNDING_COUPON.code} exists (${found.id})`);
     return found;
   }
+  const other = codes.find((c) => c.active);
+  if (other) {
+    // Active codes must be unique; the app applies the coupon server-side, so the code is optional.
+    console.warn(
+      `promotion code ${FOUNDING_COUPON.code} (${other.id}) is attached to another coupon; deactivate it in the Stripe dashboard and re-run to attach the code to ${coupon.id}.`,
+    );
+    return null;
+  }
   const created = await stripe.promotionCodes.create({
     promotion: { type: "coupon", coupon: coupon.id },
     code: FOUNDING_COUPON.code,
-    max_redemptions: FOUNDING_COUPON.maxRedemptions,
+    max_redemptions: coupon.max_redemptions ?? FOUNDING_COUPON.maxRedemptions,
   });
   console.log(`created promotion code ${FOUNDING_COUPON.code} (${created.id})`);
   return created;
@@ -122,12 +168,15 @@ async function main(): Promise<void> {
   console.log(`Stripe account ${account.id} (${mode} mode)\n`);
 
   const envLines: string[] = [];
+  let pack5Product: Stripe.Product | null = null;
   for (const plan of PLANS) {
     const product = await findOrCreateProduct(plan);
+    if (plan.id === "pack5") pack5Product = product;
     const price = await findOrCreatePrice(product, plan);
     envLines.push(`${plan.envVar}=${price.id}`);
   }
-  const coupon = await findOrCreateCoupon();
+  if (!pack5Product) throw new Error("the Agency 5-Pack product was not created");
+  const coupon = await findOrCreateCoupon(pack5Product);
   await findOrCreatePromotionCode(coupon);
   envLines.push(`STRIPE_COUPON_FOUNDING=${coupon.id}`);
 

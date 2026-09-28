@@ -43,13 +43,13 @@ Copy `.env.example` to `.env`; `npm run dev` and `npm start` load it when it exi
 | `STRIPE_SECRET_KEY` | unset | Stripe secret key; unset means mock payments |
 | `STRIPE_WEBHOOK_SECRET` | unset | Signing secret for `/api/stripe/webhook` |
 | `STRIPE_PRICE_SINGLE`, `STRIPE_PRICE_REVIEWED`, `STRIPE_PRICE_PACK5` | unset | Price ids printed by `npm run stripe:setup` |
-| `STRIPE_COUPON_FOUNDING` | unset | Coupon id for FOUNDING50 (also printed by the setup script) |
+| `STRIPE_COUPON_FOUNDING` | unset | Coupon id for FOUNDING50 (also printed by the setup script); with Stripe on and this unset, the founding offer is hidden |
 | `ANTHROPIC_API_KEY` | unset | Enables Claude narratives |
 | `ANTHROPIC_MODEL` | `claude-opus-5` | Model id for narratives |
 | `RESEND_API_KEY` | unset | Enables outbound email |
 | `EMAIL_FROM` | `AccessAudit <reports@example.com>` | From address (domain verified in Resend) |
 | `ADMIN_PASSWORD` | `admin` outside production | Basic-auth password for `/admin` (user `admin`) |
-| `ALLOW_PRIVATE_TARGETS` | `0` | `1` lets the scanner reach loopback/private addresses (fixtures and tests only; never in production) |
+| `ALLOW_PRIVATE_TARGETS` | `0` | `1` lets the scanner reach loopback/private addresses (fixtures and tests only; never in production). With it set, any anonymous visitor can make the free scan and every audit fetch and screenshot any address the server can reach, including cloud metadata (`169.254.169.254`), localhost services and other internal hosts, and read back page text, HTML snippets and screenshots; only ever set it on a laptop or in CI |
 | `PAGE_LIMIT_SINGLE` | `15` | Page cap for Site Audit and Reviewed Audit |
 | `PAGE_LIMIT_PACK` | `30` | Page cap per site for Agency 5-Pack audits |
 | `AUDIT_TIMEOUT_MS` | `720000` | Hard limit for one audit (12 minutes) |
@@ -58,18 +58,18 @@ Copy `.env.example` to `.env`; `npm run dev` and `npm start` load it when it exi
 ## Stripe setup
 
 1. Put a **test** secret key in `.env` (`STRIPE_SECRET_KEY=sk_test_...`).
-2. Run `npm run stripe:setup`. It creates the three products with one-time USD prices ($49 Site Audit, $199 Reviewed Audit, $149 Agency 5-Pack), the `FOUNDING50` coupon ($50 off, 20 redemptions) and its promotion code, and prints four lines to paste into `.env`:
-   `STRIPE_PRICE_SINGLE=...`, `STRIPE_PRICE_REVIEWED=...`, `STRIPE_PRICE_PACK5=...`, `STRIPE_COUPON_FOUNDING=...`. The script is idempotent: it looks up existing products by name first.
+2. Run `npm run stripe:setup`. It creates the three products with one-time USD prices ($49 Site Audit, $199 Reviewed Audit, $149 Agency 5-Pack), the `FOUNDING50` coupon ($50 off the Agency 5-Pack only, 20 redemptions) and its promotion code, and prints four lines to paste into `.env`:
+   `STRIPE_PRICE_SINGLE=...`, `STRIPE_PRICE_REVIEWED=...`, `STRIPE_PRICE_PACK5=...`, `STRIPE_COUPON_FOUNDING=...`. The script is idempotent: it looks up existing products by name first, and it reuses the founding coupon even after its 20 redemptions are used up instead of minting a new one. The app applies the coupon itself when an order qualifies; Stripe's promotion-code box is not shown at checkout.
 3. Forward webhooks locally: `stripe listen --forward-to localhost:3000/api/stripe/webhook`, then copy the printed `whsec_...` into `STRIPE_WEBHOOK_SECRET`.
 4. Restart the server and order an audit. `POST /order` now redirects to a real `checkout.stripe.com` page. Pay with the test card `4242 4242 4242 4242`, any future expiry, any CVC. The success page confirms the payment by retrieving the Checkout Session, so the audit starts even if the webhook is late or missing.
 5. `stripe trigger checkout.session.completed` sends an event without our metadata; the handler logs `no order_id in metadata, ignoring` and returns 200, which is the expected result.
 6. Going live: swap in the **live** secret key, run `npm run stripe:setup` once more against the live account and paste the new ids, then add a webhook endpoint in the Stripe dashboard for `https://<your domain>/api/stripe/webhook` with the events `checkout.session.completed`, `checkout.session.async_payment_succeeded` and `charge.refunded`, and set its signing secret as `STRIPE_WEBHOOK_SECRET`.
 
-Refunds issued in the Stripe dashboard mark the order `refunded`; the audit and report stay available. If a price id is missing while a Stripe key is set, `POST /order` shows "Stripe is configured but STRIPE_PRICE_X is missing; run npm run stripe:setup".
+A full refund issued in the Stripe dashboard marks the order `refunded`; the audit and report stay available, and a refunded Agency 5-Pack code loses its unused credits (audits already started with it keep working). A partial refund is only logged; the order stays paid. Refunded founding orders keep their seat, as they do on Stripe's coupon. If a price id is missing while a Stripe key is set, `POST /order` shows "Stripe is configured but STRIPE_PRICE_X is missing; run npm run stripe:setup".
 
 ## Anthropic setup
 
-Set `ANTHROPIC_API_KEY` (and optionally `ANTHROPIC_MODEL`). Narratives are requested with structured output (`messages.parse` with a zod schema), a 120-second timeout and a copy guard: if the model's text claims that a site meets a standard or is protected from lawsuits, or uses the restricted wording anywhere outside the one permitted disclaimer phrase, the response is discarded and the dictionary narrative is used. The audit log records `narrative: claude ok (...)` or `narrative: claude failed (<reason>), using dictionary`. Findings beyond the top 25 always use dictionary entries, and free teaser scans never call Claude.
+Set `ANTHROPIC_API_KEY` (and optionally `ANTHROPIC_MODEL`). Narratives are requested with structured output (`messages.parse` with a zod schema), a 120-second timeout and a copy guard: if the model's text uses any of the restricted word stems (listed in `FORBIDDEN_COPY` in `src/narrative/claude.ts`) anywhere outside the one permitted disclaimer phrase, or calls a site "lawsuit-proof" or "ADA-ready", the response is discarded and the dictionary narrative is used. The guard is a keyword backstop, not a full check: the system prompt is what tells the model never to claim that a site meets a standard or is protected from lawsuits, so read a sample of Claude-written reports before relying on them. The audit log records `narrative: claude ok (...)` or `narrative: claude failed (<reason>), using dictionary`. Findings beyond the top 25 always use dictionary entries, and free teaser scans never call Claude.
 
 ## Resend setup
 
@@ -89,7 +89,7 @@ Verify your sending domain in Resend, set `RESEND_API_KEY` and `EMAIL_FROM` (for
 
 ```bash
 npm run typecheck   # tsc --noEmit
-npm test            # vitest unit tests (SSRF, URLs, robots, ranking, delta, narrative, exports, email, orders, credits, runner, report routes)
+npm test            # vitest unit tests (SSRF, egress proxy, URLs, robots, crawler/scanner in Chromium, ranking, delta, narrative, exports, email, orders, credits, runner, report routes)
 npm run test:e2e    # Playwright end-to-end run against a fresh server on port 3101 with the fixture site
 ```
 
@@ -97,7 +97,7 @@ The end-to-end run gives its server a fresh temporary data directory (removed wh
 
 ## Sample PDF
 
-`npm run sample` starts the fixture site, creates a synthetic audit (six pages, token `sample`) in a temporary data directory, forces the dictionary narrative, runs the real pipeline and writes `public/sample-report.pdf`, then exits. It also writes `public/sample-report-preview.png`, a picture of the report's executive summary that the landing page shows instead of an embedded PDF frame (phone browsers often refuse to render PDFs inline); both files are ignored by git and rebuilt inside the Docker image. It finishes in well under three minutes. The landing page embeds that file as "See a real report"; until it exists, `/sample-report.pdf` answers 404 with "Run npm run sample". The Dockerfile runs it at build time. Set `BASE_URL` when running it so the "Scanned with AccessAudit" link in the PDF points at your real address.
+`npm run sample` starts the fixture site, creates a synthetic audit (six pages, token `sample`) in a temporary data directory, forces the dictionary narrative, runs the real pipeline and writes `public/sample-report.pdf`, then exits. It also writes `public/sample-report-preview.png`, a picture of the report's executive summary that the landing page shows instead of an embedded PDF frame (phone browsers often refuse to render PDFs inline); both files are ignored by git and rebuilt inside the Docker image. It finishes in well under three minutes. The landing page embeds that file as "See a real report"; until it exists, `/sample-report.pdf` answers 404 with "Run npm run sample". The Dockerfile runs it at build time. Set `BASE_URL` when running it so the "Scanned with AccessAudit" link in the PDF points at your real address; for the Docker image, pass it as a build argument (`fly deploy --build-arg BASE_URL=https://<app>.fly.dev`; Render hands the service's environment variables to the Docker build as build arguments). Without it the link points at the placeholder `https://accessaudit.example`.
 
 ## Deploy
 
@@ -110,11 +110,11 @@ fly launch --no-deploy --copy-config            # keeps the bundled fly.toml
 fly volumes create accessaudit_data --size 3 --region iad
 fly secrets set ADMIN_PASSWORD=change-me BASE_URL=https://accessaudit.fly.dev
 # optional: STRIPE_SECRET_KEY, STRIPE_WEBHOOK_SECRET, STRIPE_PRICE_*, STRIPE_COUPON_FOUNDING, ANTHROPIC_API_KEY, RESEND_API_KEY, EMAIL_FROM
-fly deploy
+fly deploy --build-arg BASE_URL=https://accessaudit.fly.dev   # the sample PDF is rendered at build time
 curl https://accessaudit.fly.dev/healthz        # mockPayments should be false once Stripe is configured
 ```
 
-`fly.toml` mounts the volume at `/data`, keeps exactly one machine running (the queue and the database are in-process) and checks `/healthz`. A 2 GB machine comfortably runs one audit at a time.
+`fly.toml` mounts the volume at `/data`, keeps exactly one machine running (the queue and the database are in-process), checks `/healthz` and allows 10 seconds for a graceful stop. A 2 GB machine comfortably runs one audit at a time.
 
 ### Render
 
@@ -123,9 +123,9 @@ curl https://accessaudit.fly.dev/healthz        # mockPayments should be false o
 ## Operations
 
 - **Backups**: copy `$DATA_DIR/app.db` (plus `app.db-wal` if present) and `$DATA_DIR/audits`. Uploaded logos live in `$DATA_DIR/logos`.
-- **Failed audits**: open the audit in `/admin`, read the log, fix the cause (usually an unreachable start URL) and click Re-run. Buyers see "reply to your receipt email for a refund or re-run" on the report page.
-- **Restarts**: a job interrupted by a restart is queued again on boot; one interrupted twice is marked failed with the error `crashed twice`. A graceful shutdown (SIGTERM) stops picking up new jobs first.
-- **Memory**: one audit runs at a time, pages are scanned one browser context at a time, each page scan is capped at 45 seconds, the crawl at 3 minutes, the screenshot phase at 2 minutes and the whole audit at `AUDIT_TIMEOUT_MS`. The shared Chromium is closed after every audit.
+- **Failed audits**: open the audit in `/admin`, read the log, fix the cause (usually an unreachable start URL) and click Re-run. Buyers get a "Your accessibility audit could not be completed" email with the reason and see "Reply to that email for a re-run or a refund" on the report page; failed audits are highlighted in the admin list. To fix a wrong address, type the corrected one into the Re-run form before re-running (not available for re-scans).
+- **Restarts**: a job interrupted by a restart is queued again on boot; one interrupted twice is marked failed with the error `crashed twice`. A graceful shutdown (SIGTERM or SIGINT) stops picking up new jobs first; the image runs `node` as its main process (and `npm start` execs it) so the signal reaches the server.
+- **Memory**: one audit runs at a time, pages are scanned one browser context at a time, each page scan is capped at 45 seconds, the crawl at 3 minutes, the screenshot phase at 2 minutes and the whole audit at `AUDIT_TIMEOUT_MS`. The scan phase stops starting new pages once less than 5 minutes of that budget is left and reports on the pages it scanned (the rest are listed as not scanned); an audit where no page could be loaded at all fails with `no_pages_scanned` instead of producing an empty report. The shared Chromium is closed after every audit.
 - **Health**: `/healthz` returns the modes, whether Chromium is running and the queue depth.
 - **Logs**: the server prints one line per email (`EMAIL (outbox|resend) to=... subject=...`) and per failed audit; each audit keeps its own timestamped log in the database, shown on its admin page.
 - **Reminders**: once an hour the runner emails buyers whose free re-scan is still unused 25 days after purchase.
@@ -133,13 +133,13 @@ curl https://accessaudit.fly.dev/healthz        # mockPayments should be false o
 ## Launch playbook
 
 1. Day 0 (2 hours): deploy to Fly.io, run npm run stripe:setup with LIVE keys, set secrets, register the webhook, verify /healthz shows mockPayments=false. Buy a $49 Site Audit of your own site with a real card, watch the job finish, download the PDF, then refund yourself in the Stripe dashboard. This proves the whole path.
-2. Day 0: run the free scan on 5 well-known Shopify stores and 5 designer portfolios; keep the two most impressive PDFs as sales samples. Record a 40-second screen capture: paste URL -> teaser -> pay -> report page filling in -> PDF.
-3. Day 1: create a Fiverr gig "I will audit your website for WCAG 2.2 AA accessibility and deliver a prioritized fix report" (Basic $49: 15-page automated report; Standard $99: + re-scan and 15-minute call; Premium $199: reviewed audit with manual keyboard/screen-reader checks). Create the same as an Upwork project catalog listing. Fulfil each order with the tool in 10 minutes plus a hand read of the narrative. New sellers rank slowly, so run the next steps in parallel.
-4. Day 1-2: submit AccessAudit to AlternativeTo, SaaSHub, Capterra and G2 as an accessiBe / UserWay / WAVE alternative ("not an overlay"), and to Uneed and BetaList. Link the free scanner.
-5. Week 1 (concierge outreach, 30 min/day): each day pick 10 small e-commerce sites or freelance designers. Run the free scan, email the owner or listed designer their top 3 real issues with a screenshot, one sentence on the 2025 lawsuit wave, and the $49 link (or the $149 5-Pack for designers). 50 emails/week; expect 1-3 sales.
-6. Week 1-2: reply in r/shopify, Shopify Community, r/smallbusiness, r/Entrepreneur and r/web_design threads about ADA demand letters or "is my site accessible" with genuinely useful guidance and the free scan link. Follow each community's self-promotion rules.
-7. Week 2: Show HN and Product Hunt launch of the FREE single-page scanner, with the sample PDF. Mention FOUNDING50 once for agencies.
-8. Week 2-4: the 6 SEO pages are live from day 0; add two long-form pages: "ADA website demand letter: what to do in the first 7 days" and "Shopify accessibility audit: what the free tools miss". Submit the sitemap to Google Search Console.
+2. Day 0: run the free scan on 5 well-known Shopify stores and 5 designer portfolios; keep the two most impressive PDFs (redact nothing; they are your sales samples). Record a 40-second screen capture: paste URL -> teaser -> pay -> report page filling in -> PDF.
+3. Day 1: create a Fiverr gig 'I will audit your website for WCAG 2.2 AA accessibility and deliver a prioritized fix report' (Basic $49: 15-page automated report; Standard $99: + re-scan and 15-minute call; Premium $199: reviewed audit with manual keyboard/screen-reader checks). Create the same as an Upwork project catalog listing. Fulfil each order with the tool in 10 minutes plus a hand read of the narrative. New sellers rank slowly, so run steps 4-6 in parallel.
+4. Day 1-2: submit AccessAudit to AlternativeTo, SaaSHub, Capterra and G2 as an accessiBe / UserWay / WAVE alternative ('not an overlay'), and to Uneed and BetaList. Link the free scanner.
+5. Week 1 (concierge outreach, 30 min/day): each day pick 10 small e-commerce sites (Shopify showcase, local Google Maps businesses) or freelance designers (Webflow showcase, r/web_design portfolio posts). Run the free scan, email the owner or listed designer: their top 3 real issues with a screenshot, one sentence on the 2025 lawsuit wave, and the $49 link (or the $149 5-Pack for designers). 50 emails/week; expect 1-3 sales.
+6. Week 1-2: reply in r/shopify, Shopify Community, r/smallbusiness, r/Entrepreneur and r/web_design threads about ADA demand letters or 'is my site accessible' with genuinely useful guidance (what the letter means, why overlays do not protect you, what to fix first) and the free scan link. Follow each community's self-promotion rules.
+7. Week 2: Show HN and Product Hunt launch of the FREE single-page scanner ('Show HN: Free accessibility scanner that explains fixes in plain English'), with the sample PDF. Mention FOUNDING50 once for agencies.
+8. Week 2-4: the 6 SEO pages are live from day 0; add two long-form pages: 'ADA website demand letter: what to do in the first 7 days' and 'Shopify accessibility audit: what the free tools miss'. Submit sitemap to Google Search Console.
 9. Ongoing: every paid buyer gets a testimonial ask in the report-ready email and the day-25 re-scan reminder; agencies who used all 5 credits get a one-line offer for another pack. Recruit 5 referral partners (Shopify/WordPress freelancers, hosting resellers) with a free 5-Pack in exchange for referrals.
 10. Month 2: once 10 single audits or 3 packs have sold, add the $29/mo monthly re-scan monitoring (Stripe subscription + cron re-run of existing audits) as the recurring upsell.
 

@@ -5,6 +5,7 @@
 //   GET  /mock/checkout/:orderId                     simulated checkout (only when no Stripe key)
 //   POST /mock/checkout/:orderId/pay|cancel
 //   GET  /success?order=&session_id=                 confirms payment (Stripe session or mock), shows result
+//   GET  /api/orders/:id/status?session_id=          JSON polled by public/app.js on the "confirming" page
 //   GET  /cancel?order=
 
 import fs from "node:fs";
@@ -24,10 +25,10 @@ import {
   isProduct,
   markPaid,
 } from "../payments/orders.js";
-import { createCheckoutSession, paymentIntentIdOf, retrieveSession } from "../payments/stripe.js";
+import { createCheckoutSession, foundingCouponValid, paymentIntentIdOf, retrieveSession } from "../payments/stripe.js";
 import { assertPublicUrl } from "../scan/ssrf.js";
 import type { OrderRow, Product } from "../types.js";
-import { HttpError, asyncHandler, escapeHtml } from "../util/http.js";
+import { HttpError, asyncHandler } from "../util/http.js";
 import { newId } from "../util/ids.js";
 import { renderPage } from "../util/render.js";
 import { track } from "./funnel.js";
@@ -39,7 +40,12 @@ export const MAX_AGENCY_NAME = 80;
 const MAX_EMAIL = 254;
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const SESSION_ID_PATTERN = /^[A-Za-z0-9_-]{1,255}$/;
-/** 2 minutes of 3-second refreshes on the "confirming" page. */
+/**
+ * The "confirming" page polls the order status every 3 seconds for up to 2 minutes
+ * (public/app.js, [data-poll-url]) and reloads once when the payment is confirmed.
+ * No timed <meta refresh> (WCAG 2.2.1); without JavaScript the buyer uses "Check now",
+ * whose ?t= counter stops offering it after the same number of attempts.
+ */
 const CONFIRM_MAX_ATTEMPTS = 40;
 const CONFIRM_INTERVAL_SECONDS = 3;
 
@@ -140,6 +146,7 @@ async function renderOrderForm(
   values: OrderFormValues,
   errors: OrderFormErrors,
   status = 200,
+  options: { seatsAvailable?: boolean } = {},
 ): Promise<void> {
   const info = productInfo(product);
   await renderPage(
@@ -151,7 +158,7 @@ async function renderOrderForm(
       values,
       errors,
       hasErrors: Object.keys(errors).length > 0,
-      foundingLeft: foundingLeft(),
+      foundingLeft: options.seatsAvailable === false ? 0 : foundingLeft(),
       foundingCode: FOUNDING_COUPON.code,
       foundingPrice: formatUsd(PRODUCTS.pack5.amountCents - FOUNDING_COUPON.amountOffCents),
       maxLogoMb: Math.round(MAX_LOGO_BYTES / (1024 * 1024)),
@@ -212,6 +219,18 @@ const orderLimiter = rateLimit({
   legacyHeaders: false,
   handler: (_req, _res, next) => {
     next(new HttpError(429, "Too many checkout attempts from this address in the last hour. Please try again later.", "rate_limited"));
+  },
+});
+
+// The confirming page polls every 3s (20/min per open tab); each poll of a pending
+// Stripe order can call Stripe, so cap it per IP.
+const orderStatusLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  limit: 60,
+  standardHeaders: "draft-8",
+  legacyHeaders: false,
+  handler: (_req, _res, next) => {
+    next(new HttpError(429, "Too many status checks from this address. Please wait a minute.", "rate_limited"));
   },
 });
 
@@ -280,6 +299,21 @@ router.post(
       return;
     }
 
+    // Ask Stripe whether the founding coupon still has redemptions left before
+    // pricing the order; the count-and-insert below then runs without an await,
+    // so two buyers cannot both take the last seat.
+    const wantsFounding = product === "pack5" && values.coupon.trim().toUpperCase() === FOUNDING_COUPON.code;
+    const seatsAvailable = wantsFounding && !config.mockPayments ? await foundingCouponValid() : undefined;
+    const amount = computeOrderAmount(product, values.coupon, { seatsAvailable });
+    if (amount.couponNotice && !config.mockPayments) {
+      // Stripe's page only shows the total, so explain the price change here and
+      // let the buyer continue at the regular price (the test checkout shows it instead).
+      errors.coupon = amount.couponNotice;
+      values.coupon = "";
+      await renderOrderForm(res, product, values, errors, 400, { seatsAvailable });
+      return;
+    }
+
     const orderId = newId();
     let logoPath: string | null = null;
     const file = product === "pack5" ? req.file : undefined;
@@ -295,7 +329,6 @@ router.post(
       fs.writeFileSync(logoPath, file.buffer);
     }
 
-    const amount = computeOrderAmount(product, values.coupon);
     let order: OrderRow;
     try {
       order = createOrder({
@@ -382,7 +415,13 @@ async function confirmWithStripe(order: OrderRow, sessionId: string): Promise<Or
   try {
     const session = await retrieveSession(sessionId);
     if (session.payment_status === "paid" && session.metadata?.order_id === order.id) {
-      const result = markPaid(order.id, { via: "stripe", sessionId: session.id, paymentIntent: paymentIntentIdOf(session) });
+      const result = markPaid(order.id, {
+        via: "stripe",
+        sessionId: session.id,
+        paymentIntent: paymentIntentIdOf(session),
+        amountCents: session.amount_total,
+        currency: session.currency,
+      });
       return result.order;
     }
     if (session.metadata?.order_id !== order.id) {
@@ -394,16 +433,24 @@ async function confirmWithStripe(order: OrderRow, sessionId: string): Promise<Or
   return order;
 }
 
+function sessionIdFrom(value: unknown): string {
+  const raw = queryString(value);
+  return SESSION_ID_PATTERN.test(raw) ? raw : "";
+}
+
+/** A pending Stripe order with a checkout session id is checked against Stripe directly (the webhook may lag). */
+async function currentOrder(order: OrderRow, sessionId: string): Promise<OrderRow> {
+  if (order.status === "pending" && !config.mockPayments && sessionId !== "") {
+    return confirmWithStripe(order, sessionId);
+  }
+  return order;
+}
+
 router.get(
   "/success",
   asyncHandler(async (req, res) => {
-    let order = loadOrder(queryString(req.query.order));
-    const sessionIdRaw = queryString(req.query.session_id);
-    const sessionId = SESSION_ID_PATTERN.test(sessionIdRaw) ? sessionIdRaw : "";
-
-    if (order.status === "pending" && !config.mockPayments && sessionId !== "") {
-      order = await confirmWithStripe(order, sessionId);
-    }
+    const sessionId = sessionIdFrom(req.query.session_id);
+    const order = await currentOrder(loadOrder(queryString(req.query.order)), sessionId);
 
     const info = productInfo(order.product);
     if (order.status === "pending") {
@@ -413,14 +460,17 @@ router.get(
       if (sessionId !== "") params.set("session_id", sessionId);
       params.set("t", String(attempt + 1));
       const nextUrl = `/success?${params.toString()}`;
+      const statusQuery = sessionId !== "" ? `?${new URLSearchParams({ session_id: sessionId }).toString()}` : "";
       await renderPage(res, "success", {
         title: "Confirming your payment",
-        head: refreshing ? `<meta http-equiv="refresh" content="${CONFIRM_INTERVAL_SECONDS};url=${escapeHtml(nextUrl)}">` : "",
         state: "confirming",
         order,
         product: info,
         refreshing,
         refreshUrl: nextUrl,
+        pollUrl: refreshing ? `/api/orders/${encodeURIComponent(order.id)}/status${statusQuery}` : null,
+        pollIntervalMs: CONFIRM_INTERVAL_SECONDS * 1000,
+        pollMaxTicks: CONFIRM_MAX_ATTEMPTS,
         mockCheckoutUrl: config.mockPayments ? `/mock/checkout/${order.id}` : null,
         audit: null,
         creditCode: null,
@@ -431,17 +481,40 @@ router.get(
     const audit = order.product === "pack5" ? null : auditForOrder(order.id);
     const creditCode = order.product === "pack5" ? getCodeByOrder(order.id) : null;
     await renderPage(res, "success", {
-      title: order.product === "pack5" ? "Your 5-Pack is ready" : "Your audit is running",
+      title:
+        order.product === "pack5"
+          ? order.status === "refunded"
+            ? "5-Pack refunded"
+            : "Your 5-Pack is ready"
+          : audit?.status === "failed"
+            ? "Your audit could not be completed"
+            : "Your audit is running",
       state: order.status === "refunded" ? "refunded" : "paid",
       order,
       product: info,
       refreshing: false,
       refreshUrl: null,
+      pollUrl: null,
       mockCheckoutUrl: null,
       audit,
       creditCode,
       total: formatUsd(order.amount_cents),
     });
+  }),
+);
+
+// ---------------------------------------------------------------------------
+// GET /api/orders/:id/status
+// ---------------------------------------------------------------------------
+
+/** Polled by the "confirming" page; `ready` flips once the order is no longer pending. */
+router.get(
+  "/api/orders/:id/status",
+  orderStatusLimiter,
+  asyncHandler(async (req, res) => {
+    res.setHeader("Cache-Control", "no-store");
+    const order = await currentOrder(loadOrder(String(req.params.id)), sessionIdFrom(req.query.session_id));
+    res.json({ status: order.status, ready: order.status !== "pending" });
   }),
 );
 
@@ -453,6 +526,11 @@ router.get(
   "/cancel",
   asyncHandler(async (req, res) => {
     const order = getOrder(queryString(req.query.order));
+    if (order && order.status !== "pending") {
+      // Paid (or refunded) already, e.g. the cancel link reopened from history: show the real state.
+      res.redirect(`/success?order=${encodeURIComponent(order.id)}`);
+      return;
+    }
     const product: Product = order ? order.product : "single";
     const params = new URLSearchParams({ product });
     if (order?.url) params.set("url", order.url);

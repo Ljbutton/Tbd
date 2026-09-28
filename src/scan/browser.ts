@@ -1,9 +1,12 @@
 // One shared headless Chromium for the whole process. Contexts are created per
 // scan (desktop or mobile) with a route guard that keeps the browser from
-// reaching private networks and from downloading media/fonts.
+// reaching private networks and from downloading media/fonts. Chromium runs
+// behind the pinning egress proxy (egress.ts), which vets every connection,
+// redirect hops included, against the address it actually connects to.
 
 import { chromium, devices, type Browser, type BrowserContext, type Route } from "playwright";
 import type { Viewport } from "../types.js";
+import { startEgressProxy } from "./egress.js";
 import { isAllowedHost, stripBrackets } from "./ssrf.js";
 
 export const BOT_UA_SUFFIX = "AccessAuditBot/1.0 (+https://accessaudit.example/bot)";
@@ -18,6 +21,13 @@ const ABORTED_RESOURCE_TYPES = new Set(["media", "font"]);
 let browserPromise: Promise<Browser> | null = null;
 let browserInstance: Browser | null = null;
 
+/** Contexts being created right now (reserved before getBrowser() so a close cannot slip in). */
+let pendingContexts = 0;
+/** Open scan contexts; closeBrowser() waits for these instead of killing them. */
+const liveContexts = new Set<BrowserContext>();
+/** closeBrowser() was called while contexts were open; close once the last one goes. */
+let closeRequested = false;
+
 /** True once a shared Chromium instance is running (reported by /healthz). */
 export let browserReady = false;
 
@@ -30,6 +40,8 @@ function forget(browser: Browser): void {
     browserInstance = null;
     browserPromise = null;
     browserReady = false;
+    liveContexts.clear();
+    closeRequested = false;
   }
 }
 
@@ -38,8 +50,9 @@ export async function getBrowser(): Promise<Browser> {
   if (browserInstance !== null && browserInstance.isConnected()) return browserInstance;
   if (browserPromise !== null) return browserPromise;
 
-  browserPromise = chromium
-    .launch({ headless: true, args: CHROMIUM_ARGS })
+  browserPromise = startEgressProxy()
+    // `<-loopback>` makes Chromium send localhost/127.0.0.1 through the proxy too.
+    .then((proxy) => chromium.launch({ headless: true, args: CHROMIUM_ARGS, proxy: { server: proxy.url, bypass: "<-loopback>" } }))
     .then((browser) => {
       browserInstance = browser;
       browserReady = true;
@@ -54,8 +67,39 @@ export async function getBrowser(): Promise<Browser> {
   return browserPromise;
 }
 
-/** Closes the shared browser (called at the end of every audit to free memory). Safe to call when nothing is open. */
-export async function closeBrowser(): Promise<void> {
+function contextsInUse(): number {
+  return pendingContexts + liveContexts.size;
+}
+
+/** Runs a deferred closeBrowser() once the last open context is gone. */
+function closeIfRequestedAndIdle(): void {
+  if (!closeRequested || contextsInUse() > 0) return;
+  closeRequested = false;
+  void shutDownBrowser();
+}
+
+export interface CloseBrowserOptions {
+  /** Close now even when scans are still running (the runner uses this to reclaim a stuck audit). */
+  force?: boolean;
+}
+
+/**
+ * Closes the shared browser (called at the end of every audit to free memory).
+ * Safe to call when nothing is open. While another scan still has a context
+ * open (a free teaser scan running next to an audit, say) the close is
+ * deferred until that context closes, so the scan is not killed mid-flight;
+ * `force` closes immediately.
+ */
+export async function closeBrowser(options: CloseBrowserOptions = {}): Promise<void> {
+  if (!options.force && contextsInUse() > 0) {
+    closeRequested = true;
+    return;
+  }
+  closeRequested = false;
+  await shutDownBrowser();
+}
+
+async function shutDownBrowser(): Promise<void> {
   const pending = browserPromise;
   browserPromise = null;
   let browser = browserInstance;
@@ -73,6 +117,10 @@ export async function closeBrowser(): Promise<void> {
     await browser.close();
   } catch {
     // Already gone; nothing to free.
+  }
+  // A forced close can leave contexts of this browser behind; they no longer hold anything open.
+  for (const context of liveContexts) {
+    if (context.browser() === browser) liveContexts.delete(context);
   }
 }
 
@@ -149,22 +197,34 @@ export function installRouteGuard(context: BrowserContext): void {
  * suffix, a 30s default timeout and the route guard.
  */
 export async function newScanContext(viewport: Viewport): Promise<BrowserContext> {
-  const browser = await getBrowser();
-  const context =
-    viewport === "mobile"
-      ? await browser.newContext({
-          ...devices["iPhone 13"],
-          viewport: { ...MOBILE_VIEWPORT },
-          userAgent: mobileUserAgent(),
-        })
-      : await browser.newContext({
-          viewport: { ...DESKTOP_VIEWPORT },
-          userAgent: desktopUserAgent(browser),
-        });
-  context.setDefaultTimeout(CONTEXT_DEFAULT_TIMEOUT_MS);
-  context.setDefaultNavigationTimeout(CONTEXT_DEFAULT_TIMEOUT_MS);
-  installRouteGuard(context);
-  return context;
+  pendingContexts += 1;
+  try {
+    const browser = await getBrowser();
+    const context =
+      viewport === "mobile"
+        ? await browser.newContext({
+            ...devices["iPhone 13"],
+            viewport: { ...MOBILE_VIEWPORT },
+            userAgent: mobileUserAgent(),
+          })
+        : await browser.newContext({
+            viewport: { ...DESKTOP_VIEWPORT },
+            userAgent: desktopUserAgent(browser),
+          });
+    liveContexts.add(context);
+    context.once("close", () => releaseContext(context));
+    context.setDefaultTimeout(CONTEXT_DEFAULT_TIMEOUT_MS);
+    context.setDefaultNavigationTimeout(CONTEXT_DEFAULT_TIMEOUT_MS);
+    installRouteGuard(context);
+    return context;
+  } finally {
+    pendingContexts -= 1;
+    closeIfRequestedAndIdle();
+  }
+}
+
+function releaseContext(context: BrowserContext): void {
+  if (liveContexts.delete(context)) closeIfRequestedAndIdle();
 }
 
 /** Closes a context, swallowing errors from contexts that are already gone. */
@@ -174,5 +234,7 @@ export async function closeContext(context: BrowserContext | null | undefined): 
     await context.close();
   } catch {
     // Already closed.
+  } finally {
+    releaseContext(context);
   }
 }

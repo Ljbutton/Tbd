@@ -7,7 +7,7 @@ import { useFreshDataDir } from "./helpers/data-dir.js";
 const dataDir = useFreshDataDir("exports");
 const { toCsv, toIssueTableHtml, toJson, toRemediationRecord, csvField, CSV_HEADER, REMEDIATION_RECORD_STATEMENT } =
   await import("../../src/report/exports.js");
-const { renderReportHtml, groupPages, DISCLAIMER, formatDate, formatDateTime, resolveScreenshotFile } = await import(
+const { renderReportHtml, groupPages, DISCLAIMER, formatDate, formatDateTime, formatWcagTags, resolveScreenshotFile } = await import(
   "../../src/report/render.js"
 );
 const audits = await import("../../src/audits.js");
@@ -405,6 +405,9 @@ describe("renderReportHtml (pdf mode)", () => {
     expect(html).toContain('<div class="report report--pdf"');
     expect(html.trimEnd().endsWith("</html>")).toBe(true);
     expect(html).not.toContain('class="report-nav"');
+    // Table wrappers only scroll on the web page, so the PDF gets no keyboard regions.
+    expect(html).toContain('<div class="report-table-wrap">');
+    expect(html).not.toContain('role="region"');
   });
 
   it("has every section in order with the cover details", () => {
@@ -587,6 +590,17 @@ describe("renderReportHtml (web mode, delta, white label)", () => {
     expect(html).toContain('<section class="report-section" id="report-summary"');
     expect(html.match(/class="report-section page-break"/g)).toHaveLength(3);
     expect(html.trimEnd().endsWith("</div>")).toBe(true);
+    // Every sideways-scrolling table wrapper is a named, focusable region (axe scrollable-region-focusable).
+    expect(html).toContain('<div class="report-table-wrap" tabindex="0" role="region" aria-label="Issues table">');
+    expect(html).toContain('<div class="report-table-wrap" tabindex="0" role="region" aria-label="Pages scanned table">');
+    for (const [index, label] of ["Fixed (1)", "Still present (1)", "New (1)"].entries()) {
+      const id = `report-delta-group-${index + 1}`;
+      expect(html).toContain(`<h3 id="${id}">${label}</h3>`);
+      expect(html).toContain(`<div class="report-table-wrap" tabindex="0" role="region" aria-labelledby="${id}">`);
+    }
+    expect(html).not.toMatch(/<div class="report-table-wrap">/);
+    // One page-level scroll offset keeps the sticky nav off jump targets.
+    expect(html).toContain("scroll-padding-top: 4.5rem");
   });
 
   it("uses the screenshotUrl callback, and /screenshots URLs with the token by default", () => {
@@ -655,6 +669,25 @@ describe("renderReportHtml (web mode, delta, white label)", () => {
     expect(html).toContain("https://db-pages.example/contact.html");
     expect(html).toContain("<td>Contact us</td>");
     expect(html).toContain("<td>200</td>");
+  });
+});
+
+describe("formatWcagTags", () => {
+  it("prints success-criterion numbers and the level instead of raw axe tags", () => {
+    expect(formatWcagTags(["wcag2a", "wcag111"])).toBe("WCAG 1.1.1 (Level A)");
+    expect(formatWcagTags(["wcag21aa", "wcag135"])).toBe("WCAG 1.3.5 (Level AA)");
+    expect(formatWcagTags(["wcag2aa", "wcag143", "wcag1410"])).toBe("WCAG 1.4.3, 1.4.10 (Level AA)");
+    expect(formatWcagTags(["wcag2a", "wcag412", "wcag244"])).toBe("WCAG 4.1.2, 2.4.4 (Level A)");
+    expect(formatWcagTags(["wcag22aa", "wcag258"])).toBe("WCAG 2.5.8 (Level AA)");
+    expect(formatWcagTags(["wcag2a"])).toBe("WCAG Level A");
+    expect(formatWcagTags(["cat.semantics", "best-practice"])).toBe("Best practice (not a WCAG success criterion)");
+    expect(formatWcagTags([])).toBe("");
+  });
+
+  it("is what the report shows, while the CSV keeps the raw tags", () => {
+    const html = renderReportHtml({ audit: audit(), findings, narrative, summary, mode: "pdf", pages });
+    expect(html).toContain("WCAG 1.1.1 (Level A)");
+    expect(html).not.toContain("WCAG: wcag2a");
   });
 });
 

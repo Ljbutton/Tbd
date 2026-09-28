@@ -15,7 +15,7 @@ import { appendAuditLog, getAudit, updateAudit } from "../audits.js";
 import { config } from "../config.js";
 import { db, nowIso } from "../db.js";
 import { sendEmail } from "../email/send.js";
-import { rescanReminder } from "../email/templates.js";
+import { auditFailed, rescanReminder } from "../email/templates.js";
 import { closeBrowser } from "../scan/browser.js";
 import type { AuditRow, JobRow } from "../types.js";
 import { newId } from "../util/ids.js";
@@ -95,14 +95,26 @@ function safeLog(auditId: string, line: string): void {
 // ---------------------------------------------------------------------------
 
 /**
- * Jobs still marked "running" belong to a process that died. Each goes back
- * to the queue with attempts + 1; one recovered twice is failed and its audit
- * marked failed with "crashed twice". Returns what happened for the boot log.
+ * Emails the buyer when an audit has ended failed, so nobody waits on a report
+ * page they may have closed. Never throws; the audit log records the send.
  */
-export const recoverCrashedJobs = db.transaction((): { requeued: number; failed: number } => {
+export async function sendFailureEmail(auditId: string): Promise<void> {
+  try {
+    const audit = getAudit(auditId);
+    if (!audit || audit.status !== "failed") return;
+    const mail = auditFailed(audit);
+    const sent = await sendEmail({ to: audit.email, subject: mail.subject, html: mail.html });
+    safeLog(audit.id, `email "${mail.subject}" ${sent.error ? `kept in the outbox (${sent.error})` : `sent via ${sent.sentVia}`}`);
+  } catch (err) {
+    console.error("runner: failure email for audit %s failed: %s", auditId, errorMessage(err));
+  }
+}
+
+const recoverCrashedJobsTx = db.transaction((): { requeued: number; failed: number; failedAuditIds: string[] } => {
   const running = runningJobsStmt.all() as JobRow[];
   let requeued = 0;
   let failed = 0;
+  const failedAuditIds: string[] = [];
   const now = nowIso();
   for (const job of running) {
     const attempts = job.attempts + 1;
@@ -110,6 +122,7 @@ export const recoverCrashedJobs = db.transaction((): { requeued: number; failed:
       failCrashedJobStmt.run(now, CRASHED_ERROR, job.id);
       updateAudit(job.ref_id, { status: "failed", error: CRASHED_ERROR, finished_at: now, progress_note: "Failed" });
       safeLog(job.ref_id, "runner: the process stopped twice while this audit was running; marked failed");
+      failedAuditIds.push(job.ref_id);
       failed += 1;
     } else {
       requeueJobStmt.run(job.id);
@@ -118,8 +131,20 @@ export const recoverCrashedJobs = db.transaction((): { requeued: number; failed:
       requeued += 1;
     }
   }
-  return { requeued, failed };
+  return { requeued, failed, failedAuditIds };
 });
+
+/**
+ * Jobs still marked "running" belong to a process that died. Each goes back
+ * to the queue with attempts + 1; one recovered twice is failed, its audit
+ * marked failed with "crashed twice" and the buyer emailed. Returns what
+ * happened for the boot log.
+ */
+export function recoverCrashedJobs(): { requeued: number; failed: number } {
+  const { requeued, failed, failedAuditIds } = recoverCrashedJobsTx();
+  for (const auditId of failedAuditIds) void sendFailureEmail(auditId);
+  return { requeued, failed };
+}
 
 // ---------------------------------------------------------------------------
 // Running one job
@@ -140,6 +165,8 @@ async function runJob(job: JobRow): Promise<void> {
   updateAudit(audit.id, { started_at: nowIso() });
 
   const controller = new AbortController();
+  // Shared with the pipeline so the scan phase can stop in time to deliver what it scanned.
+  const deadline = Date.now() + config.auditTimeoutMs;
   let timer: NodeJS.Timeout | undefined;
   const timeout = new Promise<never>((_, reject) => {
     timer = setTimeout(() => {
@@ -150,7 +177,7 @@ async function runJob(job: JobRow): Promise<void> {
   });
 
   try {
-    await Promise.race([runAudit(audit.id, { signal: controller.signal }), timeout]);
+    await Promise.race([runAudit(audit.id, { signal: controller.signal, deadline }), timeout]);
     const after = getAudit(audit.id);
     if (after && after.status === "failed") {
       finishJob(job.id, "failed", after.error ?? "failed");
@@ -171,10 +198,13 @@ async function runJob(job: JobRow): Promise<void> {
       safeLog(audit.id, `runner: unexpected error (${message})`);
       finishJob(job.id, "failed", message.slice(0, 500));
     }
-    await closeBrowser();
+    // Forced: the abandoned audit may still hold a context in a stuck browser.
+    await closeBrowser({ force: true });
   } finally {
     if (timer !== undefined) clearTimeout(timer);
   }
+  // One place for every way an audit can end failed: pipeline error, timeout or crash.
+  await sendFailureEmail(audit.id);
 }
 
 /** One scheduler pass: does nothing while a job runs, otherwise starts the oldest queued job. */

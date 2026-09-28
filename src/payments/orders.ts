@@ -3,7 +3,7 @@
 // webhook, the success page and an admin click can all call it safely.
 
 import { createAudit, getAudit } from "../audits.js";
-import { FOUNDING_COUPON, PRODUCTS } from "../config.js";
+import { FOUNDING_COUPON, PRODUCTS, config } from "../config.js";
 import { db, nowIso } from "../db.js";
 import { sendEmail } from "../email/send.js";
 import { creditCode as creditCodeTemplate } from "../email/templates.js";
@@ -12,7 +12,7 @@ import { track } from "../routes/funnel.js";
 import type { AuditRow, CreditCodeRow, OrderRow, Product } from "../types.js";
 import { HttpError } from "../util/http.js";
 import { newId } from "../util/ids.js";
-import { createCreditCode, getCodeByOrder } from "./credits.js";
+import { cancelCodeForOrder, createCreditCode, getCodeByOrder } from "./credits.js";
 
 export interface CreateOrderInput {
   /** Optional caller-chosen id (the order route names the logo file after it before inserting). */
@@ -32,6 +32,10 @@ export interface MarkPaidInfo {
   via: "mock" | "stripe" | "admin";
   sessionId?: string;
   paymentIntent?: string;
+  /** What Stripe actually charged (session.amount_total), stored so records match the money collected. */
+  amountCents?: number | null;
+  /** Stripe's lowercase currency code for amountCents. */
+  currency?: string | null;
 }
 
 export interface MarkPaidResult {
@@ -50,6 +54,13 @@ export interface OrderAmount {
 
 export const PRODUCT_IDS: readonly Product[] = ["single", "reviewed", "pack5"];
 
+/**
+ * How long a pending FOUNDING50 order holds its seat. The Stripe Checkout
+ * session for a founding order expires after the same window, so an abandoned
+ * checkout releases the seat on both sides at about the same time.
+ */
+export const FOUNDING_HOLD_MINUTES = 60;
+
 export function isProduct(value: unknown): value is Product {
   return typeof value === "string" && (PRODUCT_IDS as readonly string[]).includes(value);
 }
@@ -64,10 +75,13 @@ const getStmt = db.prepare("SELECT * FROM orders WHERE id = ?");
 const getBySessionStmt = db.prepare("SELECT * FROM orders WHERE stripe_session_id = ? LIMIT 1");
 const getByPaymentIntentStmt = db.prepare("SELECT * FROM orders WHERE stripe_payment_intent = ? LIMIT 1");
 const listStmt = db.prepare("SELECT * FROM orders ORDER BY created_at DESC LIMIT ?");
-const countFoundingStmt = db.prepare("SELECT COUNT(*) AS n FROM orders WHERE coupon = ? AND status = 'paid'");
+// Refunded orders stay counted: Stripe never gives a coupon redemption back.
+const countFoundingStmt = db.prepare("SELECT COUNT(*) AS n FROM orders WHERE coupon = ? AND status IN ('paid', 'refunded')");
+const countFoundingHeldStmt = db.prepare("SELECT COUNT(*) AS n FROM orders WHERE coupon = ? AND status = 'pending' AND created_at > ?");
 const setSessionStmt = db.prepare("UPDATE orders SET stripe_session_id = ? WHERE id = ?");
 const markPaidStmt = db.prepare(`
   UPDATE orders SET status = 'paid', paid_via = @paid_via, paid_at = @paid_at,
+    amount_cents = COALESCE(@amount_cents, amount_cents), currency = COALESCE(@currency, currency),
     stripe_session_id = COALESCE(@stripe_session_id, stripe_session_id),
     stripe_payment_intent = COALESCE(@stripe_payment_intent, stripe_payment_intent)
   WHERE id = @id
@@ -83,23 +97,44 @@ export function formatUsd(cents: number): string {
   return rest === 0 ? `$${whole}` : `$${whole}.${String(rest).padStart(2, "0")}`;
 }
 
-/** Paid orders that used the founding coupon. */
+/** Orders that were paid with the founding coupon (refunded ones included, as on Stripe's side). */
 export function countFoundingRedemptions(): number {
   const row = countFoundingStmt.get(FOUNDING_COUPON.code) as { n: number };
   return row.n;
 }
 
-/** Founding-offer seats still open (never negative). */
+/** Pending FOUNDING50 orders younger than FOUNDING_HOLD_MINUTES: seats held while the buyer is at checkout. */
+export function countFoundingHeld(now: Date = new Date()): number {
+  const cutoff = new Date(now.getTime() - FOUNDING_HOLD_MINUTES * 60 * 1000).toISOString();
+  const row = countFoundingHeldStmt.get(FOUNDING_COUPON.code, cutoff) as { n: number };
+  return row.n;
+}
+
+/**
+ * The founding discount can only be honoured when checkout can apply it:
+ * always in test mode, and with Stripe only when STRIPE_COUPON_FOUNDING is set.
+ */
+export function foundingOfferConfigured(): boolean {
+  return config.mockPayments || Boolean(config.stripe.couponFounding);
+}
+
+/** Founding-offer seats still open (never negative; 0 when the offer cannot be applied at checkout). */
 export function foundingLeft(): number {
-  return Math.max(0, FOUNDING_COUPON.maxRedemptions - countFoundingRedemptions());
+  if (!foundingOfferConfigured()) return 0;
+  return Math.max(0, FOUNDING_COUPON.maxRedemptions - countFoundingRedemptions() - countFoundingHeld());
 }
 
 /**
  * Price for a product plus an optional coupon. FOUNDING50 takes $50 off the
  * Agency 5-Pack while founding seats remain; any other input is ignored with
- * a notice for the checkout page.
+ * a notice for the checkout page. `seatsAvailable: false` (Stripe reports the
+ * coupon as used up) is treated like a full count of seats.
  */
-export function computeOrderAmount(product: Product, couponInput?: string | null): OrderAmount {
+export function computeOrderAmount(
+  product: Product,
+  couponInput?: string | null,
+  options: { seatsAvailable?: boolean } = {},
+): OrderAmount {
   const base = PRODUCTS[product].amountCents;
   const typed = (couponInput ?? "").trim().toUpperCase();
   if (typed === "") return { amountCents: base, coupon: null, couponNotice: null };
@@ -113,7 +148,14 @@ export function computeOrderAmount(product: Product, couponInput?: string | null
       couponNotice: `${FOUNDING_COUPON.code} only applies to the ${PRODUCTS.pack5.name}, so the regular price applies.`,
     };
   }
-  if (foundingLeft() <= 0) {
+  if (!foundingOfferConfigured()) {
+    return {
+      amountCents: base,
+      coupon: null,
+      couponNotice: `The founding offer isn't available right now, so the regular price applies.`,
+    };
+  }
+  if (options.seatsAvailable === false || foundingLeft() <= 0) {
     return {
       amountCents: base,
       coupon: null,
@@ -174,9 +216,18 @@ export function auditForOrder(orderId: string): AuditRow | null {
   return (auditForOrderStmt.get(orderId) as AuditRow | undefined) ?? null;
 }
 
-/** Marks an order refunded (charge.refunded). The audit keeps running; nothing is deleted. */
-export function markRefunded(orderId: string): OrderRow | null {
+const markRefundedTx = db.transaction((orderId: string): void => {
   markRefundedStmt.run(orderId);
+  cancelCodeForOrder(orderId);
+});
+
+/**
+ * Marks an order refunded (a full charge.refunded). Audits already created
+ * keep running and stay available; a refunded 5-Pack's unused credits are
+ * cancelled (Terms section 6). Nothing is deleted.
+ */
+export function markRefunded(orderId: string): OrderRow | null {
+  markRefundedTx(orderId);
   return getOrder(orderId);
 }
 
@@ -198,10 +249,25 @@ const markPaidTx = db.transaction((orderId: string, info: MarkPaidInfo): { resul
   // Already paid (or paid then refunded): return what was created the first time.
   if (order.status !== "pending") return { result: existingResult(order), changed: false };
 
+  const chargedCents = typeof info.amountCents === "number" && Number.isFinite(info.amountCents) ? Math.round(info.amountCents) : null;
+  const chargedCurrency = typeof info.currency === "string" && info.currency.trim() !== "" ? info.currency.trim().toLowerCase() : null;
+  if ((chargedCents !== null && chargedCents !== order.amount_cents) || (chargedCurrency !== null && chargedCurrency !== order.currency)) {
+    console.warn(
+      "markPaid: order %s was priced at %d %s but %s charged %d %s; storing the charged amount",
+      order.id,
+      order.amount_cents,
+      order.currency,
+      info.via,
+      chargedCents ?? order.amount_cents,
+      chargedCurrency ?? order.currency,
+    );
+  }
   markPaidStmt.run({
     id: order.id,
     paid_via: info.via,
     paid_at: nowIso(),
+    amount_cents: chargedCents,
+    currency: chargedCurrency,
     stripe_session_id: info.sessionId ?? null,
     stripe_payment_intent: info.paymentIntent ?? null,
   });

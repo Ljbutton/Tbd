@@ -194,12 +194,16 @@ hr {
   padding-right: var(--gutter);
 }
 
+/* Longhands on purpose: these classes share an element with .container, and a
+   `padding` shorthand here would zero the container's side gutter on phones. */
 .section {
-  padding: 3rem 0;
+  padding-top: 3rem;
+  padding-bottom: 3rem;
 }
 
 .section-tight {
-  padding: 1.5rem 0;
+  padding-top: 1.5rem;
+  padding-bottom: 1.5rem;
 }
 
 .section-narrow {

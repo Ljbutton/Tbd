@@ -36,8 +36,15 @@ function byRule(findings: Finding[]): Map<string, RuleTotals> {
   return map;
 }
 
+/**
+ * Affected-element total for percentFixed. Counts automated findings only, matching the summary's
+ * "elements affected" (needs_manual nodes are axe "incomplete" results, not confirmed defects).
+ */
 function sumNodes(findings: Finding[]): number {
-  return findings.reduce((sum, finding) => sum + Math.max(0, finding.nodesTotal), 0);
+  return findings.reduce(
+    (sum, finding) => (finding.confidence === "automated" ? sum + Math.max(0, finding.nodesTotal) : sum),
+    0,
+  );
 }
 
 /** percentFixed = round(100 * (before - after) / before), clamped to 0-100 and 0 when before is 0. */

@@ -7,7 +7,9 @@
  *     clipboard and confirm in a live region;
  *   - [data-poll-url] elements poll a JSON status endpoint every
  *     data-poll-interval ms (default 3000), fill [data-poll-field="name"]
- *     children and reload the page when the status says ready or failed.
+ *     children and reload the page when the status says ready or failed;
+ *     with data-poll-max="N" they stop after N checks, hide their
+ *     [data-poll-active] children and show their [data-poll-expired] ones.
  * No dependencies, no modules, no cookies.
  */
 (function () {
@@ -314,7 +316,15 @@
       var url = node.getAttribute("data-poll-url");
       if (!url || typeof window.fetch !== "function") return;
       var interval = Math.max(1000, Number(node.getAttribute("data-poll-interval")) || 3000);
+      var maxTicks = Math.max(0, Math.floor(Number(node.getAttribute("data-poll-max")) || 0));
+      var ticks = 0;
       var stopped = false;
+
+      function expire() {
+        stopped = true;
+        Array.prototype.forEach.call(node.querySelectorAll("[data-poll-active]"), function (child) { child.hidden = true; });
+        Array.prototype.forEach.call(node.querySelectorAll("[data-poll-expired]"), function (child) { child.hidden = false; });
+      }
 
       function apply(data) {
         var fields = node.querySelectorAll("[data-poll-field]");
@@ -333,6 +343,7 @@
 
       function tick() {
         if (stopped) return;
+        ticks += 1;
         fetch(url, { headers: { Accept: "application/json" }, cache: "no-store" })
           .then(function (response) { return response.ok ? response.json() : null; })
           .then(function (data) {
@@ -346,10 +357,31 @@
           })
           .catch(function () { /* transient; try again on the next tick */ })
           .then(function () {
-            if (!stopped) setTimeout(tick, interval);
+            if (stopped) return;
+            if (maxTicks > 0 && ticks >= maxTicks) {
+              expire();
+              return;
+            }
+            setTimeout(tick, interval);
           });
       }
       setTimeout(tick, interval);
+    });
+  }
+
+  /* --------------------------------------------------- report section nav */
+
+  // The report's section nav is one row that scrolls sideways on phones.
+  // Chrome does not scroll a focused link into view while part of it is
+  // already showing, which leaves its label and focus ring cut off at the edge.
+  function initReportNav() {
+    var nav = document.querySelector(".report-nav");
+    if (!nav) return;
+    nav.addEventListener("focusin", function (event) {
+      var link = event.target;
+      if (link && typeof link.scrollIntoView === "function") {
+        link.scrollIntoView({ block: "nearest", inline: "nearest" });
+      }
     });
   }
 
@@ -359,6 +391,7 @@
     initTeaser();
     initCopyButtons();
     initPolling();
+    initReportNav();
   }
 
   if (document.readyState === "loading") {

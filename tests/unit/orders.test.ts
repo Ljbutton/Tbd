@@ -22,7 +22,8 @@ vi.mock("../../src/email/templates.js", () => ({
 useFreshDataDir("orders");
 const { db } = await import("../../src/db.js");
 const orders = await import("../../src/payments/orders.js");
-const { getCodeByOrder } = await import("../../src/payments/credits.js");
+const { getCodeByOrder, redeemCredit } = await import("../../src/payments/credits.js");
+const { handleStripeEvent } = await import("../../src/routes/webhook.js");
 const { funnelCounts } = await import("../../src/routes/funnel.js");
 const { runnerStats } = await import("../../src/jobs/runner.js");
 
@@ -138,14 +139,18 @@ describe("pricing", () => {
 
   it("countFoundingRedemptions counts paid FOUNDING50 orders only and foundingLeft never goes negative", () => {
     const before = orders.countFoundingRedemptions();
+    const leftBefore = orders.foundingLeft();
     const pending = pack5Order();
     expect(orders.countFoundingRedemptions()).toBe(before);
+    // A fresh pending FOUNDING50 order holds its seat while the buyer is at checkout.
+    expect(orders.foundingLeft()).toBe(leftBefore - 1);
     orders.markPaid(pending.id, { via: "mock" });
     expect(orders.countFoundingRedemptions()).toBe(before + 1);
+    expect(orders.foundingLeft()).toBe(leftBefore - 1);
     pack5Order({ coupon: null, amount_cents: 14900 });
     orders.markPaid(pack5Order({ coupon: null, amount_cents: 14900 }).id, { via: "mock" });
     expect(orders.countFoundingRedemptions()).toBe(before + 1);
-    expect(orders.foundingLeft()).toBe(20 - (before + 1));
+    expect(orders.foundingLeft()).toBe(20 - (before + 1) - orders.countFoundingHeld());
 
     const insert = db.prepare(
       "INSERT INTO orders (id, created_at, email, product, status, amount_cents, coupon) VALUES (?, ?, 'x@example.com', 'pack5', 'paid', 9900, 'FOUNDING50')",
@@ -160,6 +165,47 @@ describe("pricing", () => {
     expect(exhausted.coupon).toBeNull();
     expect(exhausted.couponNotice).toMatch(/founding seats are taken/);
     db.prepare("DELETE FROM orders WHERE id LIKE 'founding-fill-%'").run();
+  });
+
+  it("a refund never gives a founding seat back, and a hold lapses after FOUNDING_HOLD_MINUTES", () => {
+    const left = orders.foundingLeft();
+    const paid = orders.markPaid(pack5Order().id, { via: "mock" }).order;
+    expect(orders.foundingLeft()).toBe(left - 1);
+    orders.markRefunded(paid.id);
+    expect(orders.getOrder(paid.id)?.status).toBe("refunded");
+    expect(orders.foundingLeft()).toBe(left - 1);
+
+    const stale = pack5Order();
+    expect(orders.foundingLeft()).toBe(left - 2);
+    const lapsed = new Date(Date.now() - (orders.FOUNDING_HOLD_MINUTES + 1) * 60 * 1000).toISOString();
+    db.prepare("UPDATE orders SET created_at = ? WHERE id = ?").run(lapsed, stale.id);
+    expect(orders.foundingLeft()).toBe(left - 1);
+  });
+
+  it("the last seat goes to one buyer only, and Stripe reporting the coupon used up counts as no seats", () => {
+    const insert = db.prepare(
+      "INSERT INTO orders (id, created_at, email, product, status, amount_cents, coupon) VALUES (?, ?, 'x@example.com', 'pack5', 'paid', 9900, 'FOUNDING50')",
+    );
+    const fill = db.transaction((n: number) => {
+      for (let i = 0; i < n; i++) insert.run(`seat-fill-${i}`, "2026-01-01T00:00:00.000Z");
+    });
+    fill(orders.foundingLeft() - 1);
+    expect(orders.foundingLeft()).toBe(1);
+
+    const first = orders.computeOrderAmount("pack5", "FOUNDING50");
+    expect(first).toEqual({ amountCents: 9900, coupon: "FOUNDING50", couponNotice: null });
+    pack5Order({ coupon: first.coupon, amount_cents: first.amountCents });
+    const second = orders.computeOrderAmount("pack5", "FOUNDING50");
+    expect(second.amountCents).toBe(14900);
+    expect(second.coupon).toBeNull();
+    expect(second.couponNotice).toMatch(/founding seats are taken/);
+    db.prepare("DELETE FROM orders WHERE id LIKE 'seat-fill-%' OR (coupon = 'FOUNDING50' AND status = 'pending')").run();
+
+    expect(orders.foundingLeft()).toBeGreaterThan(0);
+    const stripeSaysNo = orders.computeOrderAmount("pack5", "FOUNDING50", { seatsAvailable: false });
+    expect(stripeSaysNo.amountCents).toBe(14900);
+    expect(stripeSaysNo.coupon).toBeNull();
+    expect(stripeSaysNo.couponNotice).toMatch(/founding seats are taken/);
   });
 });
 
@@ -279,6 +325,62 @@ describe("markPaid", () => {
     expect(() => orders.markPaid(broken.id, { via: "mock" })).toThrow();
     expect(orders.getOrder(broken.id)?.status).toBe("pending");
     expect(orders.auditForOrder(broken.id)).toBeNull();
+  });
+
+  it("stores the amount Stripe actually charged and keeps the priced amount when none is given", () => {
+    const order = singleOrder({ product: "reviewed", amount_cents: 19900 });
+    const paid = orders.markPaid(order.id, { via: "stripe", sessionId: "cs_amt", amountCents: 14900, currency: "USD" });
+    expect(paid.order.amount_cents).toBe(14900);
+    expect(paid.order.currency).toBe("usd");
+    const mock = orders.markPaid(singleOrder().id, { via: "mock" });
+    expect(mock.order.amount_cents).toBe(4900);
+    const nulls = orders.markPaid(singleOrder().id, { via: "stripe", amountCents: null, currency: null });
+    expect(nulls.order.amount_cents).toBe(4900);
+    expect(nulls.order.currency).toBe("usd");
+  });
+
+  it("markRefunded cancels a 5-Pack's unused credits but keeps audits already started", () => {
+    const order = pack5Order({ coupon: null, amount_cents: 14900 });
+    const code = orders.markPaid(order.id, { via: "mock" }).creditCode;
+    expect(code).toBeDefined();
+    const redeemed = redeemCredit(code?.code ?? "");
+    expect(redeemed.credits_left).toBe(4);
+    orders.markRefunded(order.id);
+    expect(getCodeByOrder(order.id)?.credits_left).toBe(0);
+    let err: HttpError | null = null;
+    try {
+      redeemCredit(code?.code ?? "");
+    } catch (e) {
+      err = e as HttpError;
+    }
+    expect(err?.code).toBe("no_credits_left");
+  });
+
+  it("charge.refunded: a full refund refunds the order and cancels the code; a partial refund changes nothing", () => {
+    const refundEvent = (orderId: string, amount: number, refunded: number) =>
+      ({
+        id: `evt_${refunded}`,
+        type: "charge.refunded",
+        data: { object: { id: "ch_1", amount, amount_refunded: refunded, refunded: refunded >= amount, payment_intent: null, metadata: { order_id: orderId } } },
+      }) as unknown as Parameters<typeof handleStripeEvent>[0];
+
+    const partial = pack5Order({ coupon: null, amount_cents: 14900 });
+    orders.markPaid(partial.id, { via: "stripe", paymentIntent: "pi_partial" });
+    handleStripeEvent(refundEvent(partial.id, 14900, 500));
+    expect(orders.getOrder(partial.id)?.status).toBe("paid");
+    expect(getCodeByOrder(partial.id)?.credits_left).toBe(5);
+
+    const full = pack5Order({ coupon: null, amount_cents: 14900 });
+    orders.markPaid(full.id, { via: "stripe", paymentIntent: "pi_full" });
+    handleStripeEvent(refundEvent(full.id, 14900, 14900));
+    expect(orders.getOrder(full.id)?.status).toBe("refunded");
+    expect(getCodeByOrder(full.id)?.credits_left).toBe(0);
+
+    const single = singleOrder();
+    const paidSingle = orders.markPaid(single.id, { via: "stripe", paymentIntent: "pi_single" });
+    handleStripeEvent(refundEvent(single.id, 4900, 4900));
+    expect(orders.getOrder(single.id)?.status).toBe("refunded");
+    expect(orders.auditForOrder(single.id)?.id).toBe(paidSingle.audit?.id);
   });
 
   it("markRefunded keeps the audit and a later markPaid does not create another", () => {

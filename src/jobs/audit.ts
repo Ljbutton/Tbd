@@ -3,7 +3,8 @@
 // status column so the report page can show honest progress:
 //
 //   crawling  -> SSRF check, robots.txt, BFS crawl for up to page_limit URLs
-//   scanning  -> desktop + mobile axe run per page (one context at a time)
+//   scanning  -> desktop + mobile axe run per page (one context at a time);
+//                stops early near the runner's deadline, fails when no page loaded
 //   ranking   -> rankFindings, screenshots for ranks 1-10, findings rows
 //   writing   -> narrative (Claude or the dictionary), summary_json/narrative_json
 //   rendering -> delta (re-scans), PDF, JSON, CSV under ${dataDir}/audits/${id}/
@@ -42,12 +43,13 @@ import { htmlToPdf } from "../report/pdf.js";
 import { rankFindings } from "../report/rank.js";
 import { renderReportHtml } from "../report/render.js";
 import { track } from "../routes/funnel.js";
-import { countViolationNodes, scanPage } from "../scan/axe.js";
+import { countViolationNodes, PAGE_SCAN_TIMEOUT_MS, scanPage } from "../scan/axe.js";
 import { closeBrowser, closeContext, newScanContext } from "../scan/browser.js";
 import { crawl } from "../scan/crawler.js";
 import { loadRobots } from "../scan/robots.js";
 import { captureElement } from "../scan/screenshots.js";
 import { assertPublicUrl } from "../scan/ssrf.js";
+import { sameOrigin } from "../scan/url.js";
 import type { AuditRow, AuditSummary, Confidence, Finding, Impact, PageScan, SiteMeta, Viewport } from "../types.js";
 
 export const VIEWPORTS: readonly Viewport[] = ["desktop", "mobile"];
@@ -59,10 +61,28 @@ export const SCREENSHOT_NAVIGATION_MS = 30000;
 export const SCREENSHOT_SETTLE_MS = 500;
 /** Longest error message stored in audits.error. */
 export const MAX_ERROR_CHARS = 500;
+/** Prefix of audits.error when every page scan failed (nothing to report on). */
+export const NO_PAGES_SCANNED = "no_pages_scanned";
+/**
+ * Time kept free after the scan phase for everything that follows it: the
+ * screenshot phase cap (2 min), the Claude narrative timeout (2 min) and about
+ * a minute for the PDF, exports and emails. The scan phase stops starting new
+ * pages once the audit deadline is closer than this.
+ */
+export const POST_SCAN_RESERVE_MS = SCREENSHOT_PHASE_MS + 120000 + 60000;
+/** Shortest per-viewport scan allowed when the time budget is nearly spent. */
+export const MIN_PAGE_SCAN_MS = 15000;
 
 export interface RunAuditOptions {
   /** Fired by the runner when the audit exceeds config.auditTimeoutMs. */
   signal?: AbortSignal;
+  /**
+   * Epoch milliseconds at which the runner will stop this audit. When set, the
+   * scan phase stops early (keeping POST_SCAN_RESERVE_MS for ranking,
+   * screenshots, narrative and rendering) and reports on the pages it scanned
+   * instead of losing them all to the hard timeout.
+   */
+  deadline?: number;
 }
 
 export class AuditAbortedError extends Error {
@@ -112,7 +132,12 @@ function plural(count: number, singular: string): string {
 // Summary
 // ---------------------------------------------------------------------------
 
-/** Folds the per-page scans and the ranked findings into the AuditSummary stored as summary_json. */
+/**
+ * Folds the per-page scans and the ranked findings into the AuditSummary
+ * stored as summary_json. `urls` is everything the crawl found: a URL with a
+ * successful scan counts as scanned, one whose scans all failed as failed, and
+ * one with no scan at all (the scan phase ran out of time) as skipped.
+ */
 export function buildSummary(
   urls: string[],
   scans: PageScan[],
@@ -121,10 +146,13 @@ export function buildSummary(
   scanFinishedAt: string,
 ): AuditSummary {
   const loaded = new Set<string>();
+  const attempted = new Set<string>();
   for (const scan of scans) {
+    attempted.add(scan.url);
     if (scan.error === undefined) loaded.add(scan.url);
   }
   const pagesScanned = urls.filter((url) => loaded.has(url)).length;
+  const pagesAttempted = urls.filter((url) => attempted.has(url)).length;
   const byImpact: Record<Impact, number> = { critical: 0, serious: 0, moderate: 0, minor: 0 };
   const byConfidence: Record<Confidence, number> = { automated: 0, needs_manual: 0 };
   let totalViolationNodes = 0;
@@ -136,7 +164,8 @@ export function buildSummary(
   return {
     pagesRequested: urls.length,
     pagesScanned,
-    pagesFailed: urls.length - pagesScanned,
+    pagesFailed: pagesAttempted - pagesScanned,
+    pagesSkipped: urls.length - pagesAttempted,
     totalViolationNodes,
     findingsCount: findings.length,
     byImpact,
@@ -159,6 +188,16 @@ interface ScanPhaseResult {
   scans: PageScan[];
   siteTitle: string;
   platformGuess: SiteMeta["platformGuess"];
+}
+
+/**
+ * Overall cap for one viewport scan: the normal 45s, lowered to what is left
+ * before `scanDeadline` (but never below MIN_PAGE_SCAN_MS) so a slow page at
+ * the end of the budget cannot eat the time reserved for the rest of the audit.
+ */
+export function pageScanTimeout(scanDeadline: number | null, now: number = Date.now()): number {
+  if (scanDeadline === null) return PAGE_SCAN_TIMEOUT_MS;
+  return Math.min(PAGE_SCAN_TIMEOUT_MS, Math.max(MIN_PAGE_SCAN_MS, scanDeadline - now));
 }
 
 async function crawlPhase(audit: AuditRow, log: Logger, signal: AbortSignal | undefined): Promise<string[]> {
@@ -187,12 +226,27 @@ async function crawlPhase(audit: AuditRow, log: Logger, signal: AbortSignal | un
   return urls;
 }
 
-async function scanOne(url: string, viewport: Viewport, wantHtml: boolean): Promise<{ scan: PageScan; html: string | null }> {
+async function scanOne(url: string, viewport: Viewport, wantHtml: boolean, timeoutMs: number): Promise<{ scan: PageScan; html: string | null }> {
   let context: BrowserContext | null = null;
   try {
     context = await newScanContext(viewport);
     const page = await context.newPage();
-    const scan = await scanPage(page, url, viewport);
+    const scan = await scanPage(page, url, viewport, timeoutMs);
+    // The crawler recorded each page under its post-redirect URL; landing on another site now means
+    // we would be auditing someone else's page under the customer's URL.
+    const landed = page.url();
+    if (scan.error === undefined && !sameOrigin(landed, url)) {
+      let where = landed;
+      try {
+        where = new URL(landed).origin;
+      } catch {
+        // Keep the raw URL.
+      }
+      scan.error = `redirected off-site to ${where}`;
+      scan.title = "";
+      scan.violations = [];
+      scan.incomplete = [];
+    }
     let html: string | null = null;
     if (wantHtml && scan.error === undefined) {
       try {
@@ -207,7 +261,19 @@ async function scanOne(url: string, viewport: Viewport, wantHtml: boolean): Prom
   }
 }
 
-async function scanPhase(audit: AuditRow, urls: string[], log: Logger, signal: AbortSignal | undefined): Promise<ScanPhaseResult> {
+/**
+ * Scans every URL at both viewports. With a `scanDeadline` (epoch ms) it stops
+ * starting new pages once the deadline has passed, always scanning at least
+ * the first URL and never splitting a page's desktop/mobile pair; the
+ * unscanned URLs end up as `pagesSkipped` in the summary.
+ */
+async function scanPhase(
+  audit: AuditRow,
+  urls: string[],
+  log: Logger,
+  signal: AbortSignal | undefined,
+  scanDeadline: number | null,
+): Promise<ScanPhaseResult> {
   setProgress(audit.id, { status: "scanning", progress_pages: 0, progress_issues: 0, progress_note: `Scanning ${plural(urls.length, "page")}` });
   const scans: PageScan[] = [];
   let siteTitle = "";
@@ -217,11 +283,16 @@ async function scanPhase(audit: AuditRow, urls: string[], log: Logger, signal: A
 
   for (const url of urls) {
     throwIfAborted(signal);
+    if (scanDeadline !== null && pagesDone > 0 && Date.now() >= scanDeadline) {
+      log(`stopped scanning after ${plural(pagesDone, "page")} (time budget); ${plural(urls.length - pagesDone, "page")} not scanned`);
+      break;
+    }
     setProgress(audit.id, { progress_note: `Scanning ${shortUrl(url)} (${pagesDone + 1} of ${urls.length})` });
     const pageScans: PageScan[] = [];
     for (const viewport of VIEWPORTS) {
       throwIfAborted(signal);
-      const { scan, html } = await scanOne(url, viewport, viewport === "desktop" && platformGuess === "unknown");
+      const wantHtml = viewport === "desktop" && platformGuess === "unknown";
+      const { scan, html } = await scanOne(url, viewport, wantHtml, pageScanTimeout(scanDeadline));
       pageScans.push(scan);
       if (viewport === "desktop" && scan.error === undefined) {
         if (siteTitle === "" && scan.title !== "") siteTitle = scan.title;
@@ -396,11 +467,17 @@ export async function runAudit(auditId: string, options: RunAuditOptions = {}): 
     const urls = await crawlPhase(audit, log, signal);
     throwIfAborted(signal);
 
-    // 2. Scan
+    // 2. Scan (stops early when the audit deadline is near, keeping time for the rest)
     const scanStartedAt = nowIso();
-    const { scans, siteTitle, platformGuess } = await scanPhase(audit, urls, log, signal);
+    const scanDeadline = options.deadline !== undefined ? options.deadline - POST_SCAN_RESERVE_MS : null;
+    const { scans, siteTitle, platformGuess } = await scanPhase(audit, urls, log, signal, scanDeadline);
     const scanFinishedAt = nowIso();
     throwIfAborted(signal);
+    // Nothing loaded (bot blocking, rate limiting, the site going down): a report
+    // would read as a clean bill of health for a site that was never scanned.
+    if (scans.length === 0 || scans.every((scan) => scan.error !== undefined)) {
+      throw new Error(`${NO_PAGES_SCANNED}: ${scans[0]?.error ?? "no pages to scan"}`);
+    }
 
     // 3. Rank, screenshots, findings rows
     const findings = rankFindings(scans);

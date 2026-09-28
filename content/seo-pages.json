@@ -5,7 +5,7 @@
     "title": "Shopify accessibility audit: WCAG scan of your store in 10 minutes",
     "metaDescription": "Scan your Shopify store for WCAG 2.2 issues across up to 15 pages, ranked by lawsuit risk, with copy-paste fixes for your theme. $49, one time, no overlay.",
     "h1": "Shopify accessibility audit",
-    "intro": "Shopify stores are the most common target of ADA website lawsuits because they sell things, and most of the issues we find live in the theme: product images without alt text, low-contrast sale prices, icon buttons with no name, and forms a screen reader cannot follow. AccessAudit crawls your store the way a shopper would, scans up to 15 pages at desktop and mobile sizes, and hands you a plain-English report with before/after snippets taken from your own Liquid output.",
+    "intro": "Online stores are the most common target of ADA website lawsuits (UsableNet's lawsuit tracking puts e-commerce at roughly 70% of filings), and on Shopify most of the issues we find live in the theme: product images without alt text, low-contrast sale prices, icon buttons with no name, and forms a screen reader cannot follow. AccessAudit crawls your store the way a shopper would, scans up to 15 pages at desktop and mobile sizes, and hands you a plain-English report with before/after snippets taken from your own Liquid output.",
     "tipsHeading": "Fixing the usual Shopify issues",
     "platformTips": [
       "Alt text for product images is set per image under Products > Media in your Shopify admin, not in the theme. Describe the product, not the file name, and leave purely decorative images with empty alt text.",
@@ -47,7 +47,7 @@
     "faq": [
       {
         "q": "Do you scan the WordPress admin?",
-        "a": "No. We scan what visitors see. Logged-in pages, the block editor and wp-admin are out of scope and are not what lawsuits cite."
+        "a": "No. We scan what visitors see. Logged-in pages, the block editor and wp-admin are out of scope; the public pages your visitors use are what we scan."
       },
       {
         "q": "Will an accessibility plugin fix these?",
@@ -141,7 +141,7 @@
       },
       {
         "q": "Why not keep the overlay as extra protection?",
-        "a": "Overlays have not stopped lawsuits. Plaintiffs' firms test the underlying markup, and courts look at what the site's code actually does. An overlay can also interfere with the assistive technology your visitors already use."
+        "a": "Overlays have not stopped lawsuits: hundreds of sites running them have been sued anyway, and in 2025 the FTC ordered accessiBe to pay $1 million over claims that its widget could make any website conform to WCAG. The problems stay in the underlying markup, and an overlay can also interfere with the assistive technology your visitors already use."
       },
       {
         "q": "Does AccessAudit make my site accessible?",
@@ -167,7 +167,7 @@
       },
       {
         "title": "Do not install an overlay widget",
-        "detail": "Adding an accessibility widget after a letter arrives does not fix the issues the firm found, and overlays have been cited in later complaints as evidence that the underlying site was left broken."
+        "detail": "Adding an accessibility widget after a letter arrives does not fix the issues the firm found: the markup underneath stays broken. In 2025 the FTC ordered accessiBe to pay $1 million over claims that its widget could make any website conform to WCAG."
       },
       {
         "title": "Run an audit today",

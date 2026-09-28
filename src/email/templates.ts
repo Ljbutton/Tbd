@@ -21,6 +21,7 @@ export const SUBJECTS = {
   inReview: "We're reviewing your audit by hand",
   creditCode: "Your Agency 5-Pack code",
   rescanReminder: "Your free re-scan expires in 5 days",
+  auditFailed: "Your accessibility audit could not be completed",
 } as const;
 
 /** Days after purchase during which the free re-scan can be used (spec 6.5). */
@@ -78,6 +79,24 @@ function hostnameOf(url: string): string {
   } catch {
     return url;
   }
+}
+
+/** Human wording for audits.error (the raw message stays in the admin log). Used by the report page and the failure email. */
+export function describeAuditFailure(audit: Pick<AuditRow, "error" | "url">): string {
+  const error = (audit.error ?? "").trim();
+  if (error.startsWith("start_url_unreachable:")) {
+    // Playwright prefixes navigation errors with the call name; the buyer only needs the network reason.
+    const reason = error.slice("start_url_unreachable:".length).trim().replace(/^page\.goto:\s*/, "");
+    return `We couldn't load ${audit.url}${reason ? ` (${reason})` : ""}. Check that the address is right and the site is online.`;
+  }
+  if (error.startsWith("no_pages_scanned:")) {
+    const reason = error.slice("no_pages_scanned:".length).trim().replace(/^page\.goto:\s*/, "");
+    return `We found pages on ${hostnameOf(audit.url)} but none of them could be loaded for scanning${reason ? ` (${reason})` : ""}. The site may be blocking automated visits or was briefly unavailable.`;
+  }
+  if (error === "timeout") return "The scan ran out of time before the report could be built.";
+  if (error === "crashed twice") return "The scan stopped unexpectedly twice.";
+  if (error === "") return "The scan stopped before the report could be built.";
+  return `The scan stopped with an error: ${error}`;
 }
 
 function parseNarrative(json: string | null): Narrative | null {
@@ -263,6 +282,30 @@ export function creditCode(code: CreditCodeRow, order: OrderRow): EmailContent {
   return {
     subject: SUBJECTS.creditCode,
     html: emailLayout(SUBJECTS.creditCode, body, { preheader: `Code ${code.code}: ${code.credits_total} white-label audits.` }),
+  };
+}
+
+/**
+ * Sent when an audit ends failed (pipeline error, timeout or crash), so the
+ * buyer hears about it even if the report page is closed and has an email
+ * of ours to reply to.
+ */
+export function auditFailed(audit: AuditRow): EmailContent {
+  const url = reportUrl(audit);
+  const host = hostnameOf(audit.url);
+  const paidOrder = Boolean(audit.order_id) && !audit.credit_code_id && !audit.rescan_of;
+  const body =
+    paragraph(`We couldn't finish the ${audit.rescan_of ? "re-scan" : "audit"} of ${host}. ${describeAuditFailure(audit)}`) +
+    paragraph(
+      paidOrder
+        ? "Reply to this email and we'll run it again or refund you in full, whichever you prefer. If the address was wrong or the site was offline, tell us the right address or when it is back up."
+        : "Reply to this email and we'll run it again. If the address was wrong or the site was offline, tell us the right address or when it is back up.",
+    ) +
+    button(url, "Open the report page") +
+    linkLine(url);
+  return {
+    subject: SUBJECTS.auditFailed,
+    html: emailLayout(SUBJECTS.auditFailed, body, { preheader: `${host}: the scan did not finish.` }),
   };
 }
 

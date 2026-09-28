@@ -2,11 +2,14 @@
 #   fly launch --no-deploy --copy-config   (first time; keep this file)
 #   fly volumes create accessaudit_data --size 3 --region <region>
 #   fly secrets set ADMIN_PASSWORD=... BASE_URL=https://<app>.fly.dev [STRIPE_SECRET_KEY=... ANTHROPIC_API_KEY=... RESEND_API_KEY=...]
-#   fly deploy
+#   fly deploy --build-arg BASE_URL=https://<app>.fly.dev   (the link in the sample PDF rendered at build time)
 # One machine only: the job queue and the SQLite database live on the volume.
 
 app = "accessaudit"
 primary_region = "iad"
+# The server exits at most 5 seconds after the stop signal (graceful shutdown with a
+# 5-second fallback); give it longer than that before the machine is killed.
+kill_timeout = 10
 
 [build]
   dockerfile = "Dockerfile"

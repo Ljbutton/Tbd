@@ -27,6 +27,7 @@ const getByCodeStmt = db.prepare("SELECT * FROM credit_codes WHERE code = ?");
 const getByIdStmt = db.prepare("SELECT * FROM credit_codes WHERE id = ?");
 const getByOrderStmt = db.prepare("SELECT * FROM credit_codes WHERE order_id = ? ORDER BY created_at ASC LIMIT 1");
 const redeemStmt = db.prepare("UPDATE credit_codes SET credits_left = credits_left - 1 WHERE code = ? AND credits_left > 0");
+const cancelForOrderStmt = db.prepare("UPDATE credit_codes SET credits_left = 0 WHERE order_id = ? AND credits_left > 0");
 const auditsForCodeStmt = db.prepare("SELECT * FROM audits WHERE credit_code_id = ? ORDER BY created_at DESC");
 
 /** A fresh random code in canonical AA-XXXX-XXXX form. */
@@ -129,6 +130,16 @@ export function redeemCredit(code: string): CreditCodeRow {
   const existing = getByCodeStmt.get(canonical) as CreditCodeRow | undefined;
   if (!existing) throw new HttpError(404, CREDIT_MESSAGES.code_not_found, "code_not_found");
   throw new HttpError(400, CREDIT_MESSAGES.no_credits_left, "no_credits_left");
+}
+
+/**
+ * Cancels the unused credits of the code issued for an order (a refunded
+ * 5-Pack, Terms section 6). Audits already started keep working. Returns how
+ * many codes changed (0 for orders without a code or with no credits left).
+ */
+export function cancelCodeForOrder(orderId: string): number {
+  if (!orderId) return 0;
+  return cancelForOrderStmt.run(orderId).changes;
 }
 
 /** Audits started with this code, newest first. */

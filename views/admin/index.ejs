@@ -25,6 +25,7 @@
     <p class="small muted mt-2 mb-0">
       Queue: <strong><%= queue.running %></strong> running, <strong><%= queue.queued %></strong> queued.
       <% if (heldCount > 0) { %> <strong><%= heldCount %></strong> audit<%= heldCount === 1 ? "" : "s" %> held for review.<% } %>
+      <% if (failedCount > 0) { %> <strong><%= failedCount %></strong> failed audit<%= failedCount === 1 ? "" : "s" %> in the list below.<% } %>
       <% if (outboxEnabled) { %> Emails are stored in the <a href="/outbox">outbox</a>.<% } %>
     </p>
   </div>
@@ -43,7 +44,7 @@
   <% if (audits.length === 0) { %>
     <p class="muted">No audits yet.</p>
   <% } else { %>
-    <div class="table-wrap">
+    <div class="table-wrap" tabindex="0" role="region" aria-label="Most recent audits">
       <table class="table table-compact">
         <caption class="visually-hidden">Most recent audits</caption>
         <thead>
@@ -60,7 +61,7 @@
         </thead>
         <tbody>
           <% audits.forEach((audit) => { %>
-            <tr class="<%= audit.status === "held" ? "row-highlight" : "" %>">
+            <tr class="<%= audit.status === "held" || audit.status === "failed" ? "row-highlight" : "" %>">
               <td class="break admin-cell-wide">
                 <%= audit.url %>
                 <% if (audit.rescan_of) { %><span class="badge badge-info">re-scan</span><% } %>
@@ -70,6 +71,7 @@
               <td>
                 <span class="badge <%= statusBadge(audit.status) %>"><%= audit.status %></span>
                 <% if (audit.status === "held") { %><strong>Needs review</strong><% } %>
+                <% if (audit.status === "failed") { %><strong>Needs attention</strong><% } %>
               </td>
               <td class="num"><%= audit.progress_pages %> / <%= audit.page_limit %></td>
               <td class="num"><%= audit.progress_issues %></td>
@@ -87,7 +89,7 @@
   <% if (orders.length === 0) { %>
     <p class="muted">No orders yet.</p>
   <% } else { %>
-    <div class="table-wrap">
+    <div class="table-wrap" tabindex="0" role="region" aria-label="Most recent orders">
       <table class="table table-compact">
         <caption class="visually-hidden">Most recent orders</caption>
         <thead>

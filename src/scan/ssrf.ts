@@ -3,7 +3,7 @@
 // URLs that resolve exclusively to public unicast addresses may be fetched.
 
 import { lookup } from "node:dns/promises";
-import net from "node:net";
+import net, { type LookupFunction } from "node:net";
 import { config } from "../config.js";
 import { HttpError } from "../util/http.js";
 
@@ -243,3 +243,62 @@ export async function isAllowedHost(hostname: string): Promise<boolean> {
     return false;
   }
 }
+
+/**
+ * DNS-free policy check for code that opens its own connections: true when
+ * the hostname must not be contacted at all (localhost, *.internal, an IP
+ * literal in a blocked range...). Honors `config.allowPrivateTargets`. Pair it
+ * with `pinnedLookup`, which vets names at connect time.
+ */
+export function isDeniedHostname(hostname: string): boolean {
+  return !config.allowPrivateTargets && isBlockedHostname(hostname);
+}
+
+/**
+ * Resolves a hostname and returns every address, but only when the host may
+ * be fetched: blocked names, and names with any non-public answer, throw
+ * `blocked_target` (DNS failures throw `dns_failed`). Honors
+ * `config.allowPrivateTargets`.
+ */
+export async function resolveAllowedAddresses(hostname: string): Promise<string[]> {
+  if (isDeniedHostname(hostname)) throw fail("blocked_target");
+  const addresses = await resolveAddresses(hostname);
+  if (!config.allowPrivateTargets && !addresses.every((address) => isPublicIp(address))) throw fail("blocked_target");
+  return addresses;
+}
+
+function lookupFamily(family: unknown): 0 | 4 | 6 {
+  if (family === 4 || family === "IPv4") return 4;
+  if (family === 6 || family === "IPv6") return 6;
+  return 0;
+}
+
+/**
+ * `lookup` for net/http/https connections that pins the socket to vetted
+ * addresses: the host is resolved once, refused unless every answer is public
+ * (see resolveAllowedAddresses), and only those vetted addresses are handed to
+ * the socket. Checking and connecting use the same answer, so a DNS-rebinding
+ * server cannot swap in a private address between the two. Node skips
+ * `lookup` for IP literals, so callers must also check `isDeniedHostname`.
+ */
+export const pinnedLookup: LookupFunction = (hostname, options, callback) => {
+  resolveAllowedAddresses(hostname).then(
+    (addresses) => {
+      const family = lookupFamily(options.family);
+      const records = addresses
+        .map((address) => ({ address, family: net.isIPv6(address) ? 6 : 4 }))
+        .filter((record) => family === 0 || record.family === family);
+      const first = records[0];
+      if (first === undefined) {
+        callback(Object.assign(new Error(`no IPv${family} address for ${hostname}`), { code: "ENOTFOUND" }), "", 0);
+      } else if (options.all) {
+        callback(null, records);
+      } else {
+        callback(null, first.address, first.family);
+      }
+    },
+    (err: unknown) => {
+      callback(err instanceof Error ? err : new Error(String(err)), "", 0);
+    },
+  );
+};

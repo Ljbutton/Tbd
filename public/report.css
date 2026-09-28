@@ -2,7 +2,7 @@
    Inlined into the report document by src/report/render.ts, for both the PDF
    (Chromium print, Letter) and the web page (embedded in report-page.ejs).
    Every rule is scoped under .report so nothing leaks into the site layout;
-   only @page and body.report-doc are global. Every text/background pairing is
+   only @page, body.report-doc and the html scroll offset are global. Every text/background pairing is
    at or above 4.5:1 contrast (badges included), because this product audits
    accessibility and its own report has to pass. */
 
@@ -122,6 +122,14 @@ body.report-doc {
   margin-bottom: 0.3em;
 }
 
+/* A long unbroken string (such as the rule URL in a fallback fix step) wraps
+   instead of widening the whole page on a phone. break-word, unlike anywhere,
+   leaves min-content widths alone, and :where keeps this below any rule that
+   sets its own overflow-wrap. */
+.report :where(p, li) {
+  overflow-wrap: break-word;
+}
+
 .report a {
   color: var(--r-accent);
   text-decoration: underline;
@@ -202,8 +210,12 @@ body.report-doc {
   margin-bottom: 2.2em;
 }
 
-.report--web .report-section {
-  scroll-margin-top: 4.5rem;
+/* One offset for every in-page jump (sections, findings, focus scrolling) so the
+   sticky .report-nav never covers the target. The nav is always a single row,
+   so 4.5rem always clears it. Do not add scroll-margin-top to targets as well:
+   the two add together. No effect in the PDF. */
+html {
+  scroll-padding-top: 4.5rem;
 }
 
 .report-section__num {
@@ -221,28 +233,42 @@ body.report-doc {
   background: rgba(255, 255, 255, 0.96);
   border-bottom: 1px solid var(--r-border-soft);
   margin: 0 0 1.5rem;
-  padding: 0.5rem 0;
+  padding: 0.15rem 0;
 }
 
+/* One row that scrolls sideways on narrow screens instead of wrapping to two or
+   three rows, so the nav stays shorter than the html scroll-padding-top. The
+   list padding and scroll-padding keep a focused link's outline inside the
+   scroll box (it would be clipped otherwise); the negative margin keeps the
+   text aligned with the page. */
 .report-nav ul {
   list-style: none;
-  margin: 0;
-  padding: 0;
+  margin: 0 -0.4rem;
+  padding: 0.35rem 0.4rem;
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   gap: 0.25rem 1.1rem;
+  overflow-x: auto;
+  white-space: nowrap;
+  scrollbar-width: thin;
+  scroll-padding-inline: 0.4rem;
 }
 
 .report-nav li {
   margin: 0;
+  flex: 0 0 auto;
 }
 
+/* The negative scroll-margin cancels the html scroll-padding-top for the nav's
+   own links. The nav is sticky and so already in view; without this, tabbing
+   into it while it is stuck scrolls the page up by several hundred pixels. */
 .report-nav a {
   display: inline-block;
   padding: 0.4rem 0.1rem;
   font-weight: 600;
   color: var(--r-text);
   text-decoration: none;
+  scroll-margin-top: -4.5rem;
 }
 
 .report-nav a:hover,
@@ -499,6 +525,22 @@ body.report-doc {
 .report--web .report-table-wrap {
   overflow-x: auto;
   -webkit-overflow-scrolling: touch;
+}
+
+/* When a table is wider than a phone screen, auto table layout squeezes each
+   column to its min-content width, and `overflow-wrap: anywhere` makes that a
+   few characters (titles split mid-word, URLs in 3-4 character pieces). The
+   wrapper scrolls sideways instead, so give these columns a readable floor. */
+.report-table .report-link {
+  overflow-wrap: break-word;
+}
+
+.report--web .report-table--issues td:nth-child(2) {
+  min-width: 11rem;
+}
+
+.report--web .report-table--pages td.url {
+  min-width: 14rem;
 }
 
 .report-table {

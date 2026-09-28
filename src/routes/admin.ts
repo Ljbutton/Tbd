@@ -2,7 +2,7 @@
 //
 //   GET  /admin                          mode banner, funnel counters, orders, audits
 //   GET  /admin/audits/:id               status, timing, log, pages, findings, narrative editor
-//   POST /admin/audits/:id/rerun         reset to queued, clear results, new job
+//   POST /admin/audits/:id/rerun         reset to queued, clear results, new job (optionally with a corrected url)
 //   POST /admin/audits/:id/narrative     validate against NarrativeSchema, save, re-render PDF/JSON/CSV
 //   POST /admin/audits/:id/release       held -> ready, released_at, report-ready email
 //   POST /admin/orders/:id/mark-paid     markPaid(via: "admin") for bank transfers / marketplace orders
@@ -38,6 +38,7 @@ import { toCsv, toJson } from "../report/exports.js";
 import { htmlToPdf } from "../report/pdf.js";
 import { renderReportHtml } from "../report/render.js";
 import { closeBrowser } from "../scan/browser.js";
+import { assertPublicUrl } from "../scan/ssrf.js";
 import type { AuditRow, AuditSummary, JobRow, Narrative } from "../types.js";
 import { HttpError, asyncHandler, basicAuth } from "../util/http.js";
 import { renderPage } from "../util/render.js";
@@ -326,6 +327,7 @@ router.get(
       orders: listOrders(LIST_LIMIT),
       audits,
       heldCount: audits.filter((audit) => audit.status === "held").length,
+      failedCount: audits.filter((audit) => audit.status === "failed").length,
       notice: noticeFor(req.query.notice),
       outboxEnabled: config.emailOutbox,
       listLimit: LIST_LIMIT,
@@ -357,6 +359,28 @@ router.post(
     if (open === "queued") {
       res.redirect(303, `/admin/audits/${encodeURIComponent(audit.id)}?notice=already_queued`);
       return;
+    }
+    // Optional corrected address (e.g. the buyer replied with the right URL).
+    // A re-scan keeps the original's address: its before/after compares the same site.
+    const body = (req.body ?? {}) as { url?: unknown };
+    const requestedUrl = typeof body.url === "string" ? body.url.trim().slice(0, 2048) : "";
+    if (requestedUrl !== "" && requestedUrl !== audit.url) {
+      if (audit.rescan_of) {
+        await renderAuditDetail(res, audit, { error: "A re-scan keeps the original audit's address, so it can't be changed here.", status: 400 });
+        return;
+      }
+      let target: URL;
+      try {
+        target = await assertPublicUrl(requestedUrl);
+      } catch (err) {
+        if (err instanceof HttpError && err.status === 400) {
+          await renderAuditDetail(res, audit, { error: `That address can't be scanned: ${err.message}`, status: 400 });
+          return;
+        }
+        throw err;
+      }
+      updateAudit(audit.id, { url: target.href, origin: target.origin });
+      appendAuditLog(audit.id, `admin: address changed from ${audit.url} to ${target.href}`);
     }
     clearAuditResults(audit.id);
     updateAudit(audit.id, {

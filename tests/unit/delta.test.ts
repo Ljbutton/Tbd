@@ -96,4 +96,23 @@ describe("computeDelta", () => {
     expect(delta.newIssues.map((e) => e.ruleId)).toEqual(["aria-roles", "select-name"]);
     expect(delta.nodesBefore).toBe(7);
   });
+
+  it("lists needs_manual rules in the tables but leaves them out of element totals and percentFixed", () => {
+    const manual = (rank: number, ruleId: string, nodesTotal: number): Finding => ({
+      ...finding(rank, ruleId, nodesTotal),
+      confidence: "needs_manual",
+    });
+    const original = [finding(1, "image-alt", 10), manual(2, "duplicate-id-aria", 1)];
+    const rescan = [finding(1, "image-alt", 5), manual(2, "duplicate-id-aria", 1), manual(3, "color-contrast", 4)];
+    const delta = computeDelta(original, rescan, meta);
+
+    expect(delta.unchanged.map((e) => e.ruleId)).toEqual(["image-alt", "duplicate-id-aria"]);
+    expect(delta.unchanged[1]).toMatchObject({ before: 1, after: 1 });
+    expect(delta.newIssues).toEqual([
+      { ruleId: "color-contrast", title: "Text is too light against its background", before: 0, after: 4 },
+    ]);
+    expect(delta.nodesBefore).toBe(10);
+    expect(delta.nodesAfter).toBe(5);
+    expect(delta.percentFixed).toBe(50);
+  });
 });

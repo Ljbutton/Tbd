@@ -84,7 +84,8 @@ export const LITIGATION: Record<string, LitigationEntry> = {
   "scrollable-region-focusable": { weight: 2, category: "keyboard" },
   "meta-viewport": { weight: 3, category: "mobile" },
   "autocomplete-valid": { weight: 1, category: "forms" },
-  "duplicate-id-aria": { weight: 1, category: "aria" },
+  // Duplicate ids break the label and aria-labelledby references that name form fields.
+  "duplicate-id-aria": { weight: 1, category: "forms" },
   tabindex: { weight: 2, category: "keyboard" },
   "video-caption": { weight: 3, category: "media" },
   "audio-caption": { weight: 3, category: "media" },

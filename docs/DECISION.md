@@ -45,7 +45,7 @@ Each judge scored 1-10 on five criteria (max total 50). Judges: a serial indie h
 | One careless sentence about "compliance" recreates the FTC problem that sank the overlay vendors | The word appears only inside the fixed disclaimer. Every report, pricing card and email says it is an automated audit plus a manual checklist, not a certification or legal advice. |
 | New Fiverr sellers rank slowly | The playbook runs concierge outreach (free scan, then a personal email with the top 3 issues), community replies to demand-letter threads, and directory listings in parallel from day 1. |
 | Headless Chromium memory on a cheap host | One audit at a time, hard page cap, per-page and per-audit timeouts, the browser is closed after every audit. Deploys to a Playwright Docker image on Fly.io for roughly $3-5/month. |
-| Crawling arbitrary URLs is an SSRF vector | DNS-resolved private-IP blocklist on every user-supplied URL and on every request the browser makes. |
+| Crawling arbitrary URLs is an SSRF vector | DNS-resolved private-IP blocklist on every user-supplied URL and on every request the browser makes; Chromium and the robots.txt fetch connect only to the exact address that passed the check (a local pinning egress proxy, redirect hops included), so DNS rebinding cannot swap in a private address. |
 
 ## Ideas grafted from the losing proposals
 

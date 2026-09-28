@@ -8,13 +8,15 @@ useFreshDataDir("runner");
 const pipeline = vi.hoisted(() => ({
   mode: "ready" as "ready" | "failed" | "hang",
   calls: [] as string[],
+  deadlines: [] as (number | undefined)[],
 }));
 
 vi.mock("../../src/jobs/audit.js", async () => {
   const { updateAudit } = await import("../../src/audits.js");
   return {
-    runAudit: async (auditId: string, options: { signal?: AbortSignal } = {}): Promise<void> => {
+    runAudit: async (auditId: string, options: { signal?: AbortSignal; deadline?: number } = {}): Promise<void> => {
       pipeline.calls.push(auditId);
+      pipeline.deadlines.push(options.deadline);
       if (pipeline.mode === "hang") {
         await new Promise<void>((resolve) => {
           options.signal?.addEventListener("abort", () => resolve(), { once: true });
@@ -82,6 +84,7 @@ async function waitFor(predicate: () => boolean, timeoutMs = 5000): Promise<void
 beforeEach(() => {
   pipeline.mode = "ready";
   pipeline.calls.length = 0;
+  pipeline.deadlines.length = 0;
   db.prepare("DELETE FROM jobs").run();
 });
 
@@ -110,6 +113,18 @@ describe("crash recovery", () => {
     expect(row?.status).toBe("failed");
     expect(row?.error).toBe("crashed twice");
     expect(row?.finished_at).toBeTruthy();
+  });
+
+  it("emails the buyer when a crash recovery fails their audit", async () => {
+    const audit = makeAudit({ status: "crawling" });
+    db.prepare("UPDATE audits SET email = ? WHERE id = ?").run("crashed@example.com", audit.id);
+    insertJob(audit.id, "running", 1);
+    runner.recoverCrashedJobs();
+    await waitFor(() => listOutbox(100).some((m) => m.to_email === "crashed@example.com"));
+    const mail = listOutbox(100).find((m) => m.to_email === "crashed@example.com");
+    expect(mail?.subject).toBe("Your accessibility audit could not be completed");
+    expect(mail?.html).toContain("The scan stopped unexpectedly twice.");
+    expect(mail?.html).toContain(`/r/${audit.token}`);
   });
 
   it("leaves queued and done jobs alone", () => {
@@ -148,6 +163,19 @@ describe("tick", () => {
     expect(runner.runnerStats()).toEqual({ queued: 0, running: 0 });
   });
 
+  it("hands the pipeline the moment the timeout will stop it, so the scan phase can finish early", async () => {
+    const audit = makeAudit();
+    runner.enqueueAudit(audit.id);
+    const before = Date.now();
+    runner.tick();
+    await runner.waitForIdle();
+    const after = Date.now();
+    expect(pipeline.deadlines).toHaveLength(1);
+    const deadline = pipeline.deadlines[0] as number;
+    expect(deadline).toBeGreaterThanOrEqual(before + config.auditTimeoutMs);
+    expect(deadline).toBeLessThanOrEqual(after + config.auditTimeoutMs);
+  });
+
   it("records a failed job when the pipeline ends with a failed audit", async () => {
     pipeline.mode = "failed";
     const audit = makeAudit();
@@ -156,6 +184,20 @@ describe("tick", () => {
     await runner.waitForIdle();
     const row = db.prepare("SELECT status, error FROM jobs WHERE ref_id = ?").get(audit.id) as { status: string; error: string };
     expect(row).toEqual({ status: "failed", error: "boom" });
+    // The buyer hears about it even if the report page is closed.
+    const mails = listOutbox(100).filter((m) => m.subject === "Your accessibility audit could not be completed" && m.html.includes(`/r/${audit.token}`));
+    expect(mails).toHaveLength(1);
+    expect(mails[0]?.to_email).toBe("buyer@example.com");
+    expect(mails[0]?.html).toContain("The scan stopped with an error: boom");
+    expect(getAudit(audit.id)?.log).toContain('email "Your accessibility audit could not be completed"');
+  });
+
+  it("does not send a failure email for an audit that ends ready", async () => {
+    const audit = makeAudit();
+    runner.enqueueAudit(audit.id);
+    runner.tick();
+    await runner.waitForIdle();
+    expect(listOutbox(100).some((m) => m.subject === "Your accessibility audit could not be completed" && m.html.includes(`/r/${audit.token}`))).toBe(false);
   });
 
   it("stops an audit that exceeds the timeout, marks it failed with 'timeout' and frees the runner", async () => {
@@ -174,6 +216,9 @@ describe("tick", () => {
       const jobRow = db.prepare("SELECT status, error FROM jobs WHERE ref_id = ?").get(audit.id) as { status: string; error: string };
       expect(jobRow).toEqual({ status: "failed", error: "timeout" });
       expect(runner.currentAuditId()).toBeNull();
+      const mail = listOutbox(100).find((m) => m.html.includes(`/r/${audit.token}`));
+      expect(mail?.subject).toBe("Your accessibility audit could not be completed");
+      expect(mail?.html).toContain("The scan ran out of time");
     } finally {
       config.auditTimeoutMs = original;
     }

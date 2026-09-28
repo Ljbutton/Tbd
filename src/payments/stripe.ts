@@ -5,7 +5,7 @@ import Stripe from "stripe";
 import { FOUNDING_COUPON, config } from "../config.js";
 import type { OrderRow, Product } from "../types.js";
 import { HttpError } from "../util/http.js";
-import { setOrderSession } from "./orders.js";
+import { FOUNDING_HOLD_MINUTES, setOrderSession } from "./orders.js";
 
 let client: Stripe | null = null;
 
@@ -45,16 +45,40 @@ function describeStripeError(err: unknown): string {
 }
 
 /**
+ * Whether Stripe still accepts the founding coupon (it stops being valid once
+ * its redemptions are used up). True in test mode; false when the coupon id
+ * is not configured. A lookup failure answers true and leaves the decision to
+ * session creation, which fails loudly if the coupon really is gone.
+ */
+export async function foundingCouponValid(): Promise<boolean> {
+  if (config.mockPayments) return true;
+  const id = config.stripe.couponFounding;
+  if (!id) return false;
+  try {
+    const coupon = await getStripe().coupons.retrieve(id);
+    return coupon.valid;
+  } catch (err) {
+    console.error("stripe: could not look up coupon %s: %s", id, describeStripeError(err));
+    return true;
+  }
+}
+
+/**
  * Creates a one-time Checkout Session for a pending order and stores its id
  * on the order. The founding coupon is applied server-side when the order
- * earned it (and the coupon id is configured); otherwise buyers may enter a
- * promotion code on Stripe's page.
+ * earned it; no other discount exists, so Stripe's promotion-code box stays
+ * off (a code typed there would bypass the product and seat checks). A
+ * founding session expires when the order's seat hold ends.
  */
 export async function createCheckoutSession(order: OrderRow): Promise<Stripe.Checkout.Session> {
   const stripe = getStripe();
   const price = priceIdFor(order.product);
   const metadata = { order_id: order.id, product: order.product };
-  const founding = order.coupon === FOUNDING_COUPON.code && Boolean(config.stripe.couponFounding);
+  const founding = order.coupon === FOUNDING_COUPON.code;
+  if (founding && !config.stripe.couponFounding) {
+    // Never send a buyer to a Stripe page asking more than the order says.
+    throw new HttpError(500, "Stripe is configured but STRIPE_COUPON_FOUNDING is missing; run npm run stripe:setup", "stripe_coupon_missing");
+  }
 
   const params: Stripe.Checkout.SessionCreateParams = {
     mode: "payment",
@@ -69,8 +93,7 @@ export async function createCheckoutSession(order: OrderRow): Promise<Stripe.Che
   };
   if (founding) {
     params.discounts = [{ coupon: config.stripe.couponFounding as string }];
-  } else {
-    params.allow_promotion_codes = true;
+    params.expires_at = Math.floor(Date.now() / 1000) + FOUNDING_HOLD_MINUTES * 60;
   }
 
   let session: Stripe.Checkout.Session;

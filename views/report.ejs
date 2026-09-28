@@ -124,7 +124,7 @@
     <p>The automated checks found no issues on the <%= formatNumber(stats.pagesScanned) %> pages we scanned.</p>
 <% } else { %>
     <p class="muted">Ranked by impact, how many pages are affected and how often the category shows up in accessibility complaints. Rank 1 is where to start.</p>
-    <div class="report-table-wrap">
+    <div class="report-table-wrap"<% if (isWeb) { %> tabindex="0" role="region" aria-label="Issues table"<% } %>>
       <table class="report-table report-table--issues">
         <thead>
           <tr>
@@ -176,8 +176,8 @@
           Rule <code><%= d.ruleId %></code>
           &middot; <%= formatNumber(d.pagesAffected) %> <%= d.pagesAffected === 1 ? 'page' : 'pages' %>,
           <%= formatNumber(d.nodesTotal) %> <%= d.nodesTotal === 1 ? 'element' : 'elements' %>
-<% if (d.wcagTags.length > 0) { %>
-          &middot; WCAG: <%= d.wcagTags.join(', ') %>
+<% if (d.wcagLabel) { %>
+          &middot; <%= d.wcagLabel %>
 <% } %>
 <% if (d.helpUrl) { %>
           &middot; <a href="<%= d.helpUrl %>">Rule reference</a>
@@ -261,13 +261,13 @@
   <section class="report-section" id="report-pages" aria-labelledby="report-pages-title">
     <h2 id="report-pages-title"><span class="report-section__num"><%= sections.pages %></span> Pages scanned</h2>
     <p class="muted">
-      <%= formatNumber(stats.pagesScanned) %> of <%= formatNumber(stats.pagesRequested) %> requested <%= stats.pagesRequested === 1 ? 'page' : 'pages' %> scanned<% if (stats.pagesFailed > 0) { %>, <%= formatNumber(stats.pagesFailed) %> could not be loaded<% } %>.
+      <%= formatNumber(stats.pagesScanned) %> of <%= formatNumber(stats.pagesRequested) %> requested <%= stats.pagesRequested === 1 ? 'page' : 'pages' %> scanned<% if (stats.pagesFailed > 0) { %>, <%= formatNumber(stats.pagesFailed) %> could not be loaded<% } %><% if (stats.pagesSkipped > 0) { %>, <%= formatNumber(stats.pagesSkipped) %> not scanned because the audit reached its time limit<% } %>.
       Issue counts are the number of failing elements found on each page at that screen size.
     </p>
 <% if (pages.length === 0) { %>
     <p>No page details were recorded for this scan.</p>
 <% } else { %>
-    <div class="report-table-wrap">
+    <div class="report-table-wrap"<% if (isWeb) { %> tabindex="0" role="region" aria-label="Pages scanned table"<% } %>>
       <table class="report-table report-table--pages">
         <thead>
           <tr>
@@ -324,12 +324,12 @@
         <span class="report-stat__label">New issue <%= delta.newIssues.length === 1 ? 'type' : 'types' %></span>
       </div>
     </div>
-<% deltaView.groups.forEach(function (group) { %>
-    <h3><%= group.label %> (<%= formatNumber(group.rows.length) %>)</h3>
+<% deltaView.groups.forEach(function (group, groupIndex) { %>
+    <h3 id="report-delta-group-<%= groupIndex + 1 %>"><%= group.label %> (<%= formatNumber(group.rows.length) %>)</h3>
 <% if (group.rows.length === 0) { %>
     <p class="muted"><%= group.empty %></p>
 <% } else { %>
-    <div class="report-table-wrap">
+    <div class="report-table-wrap"<% if (isWeb) { %> tabindex="0" role="region" aria-labelledby="report-delta-group-<%= groupIndex + 1 %>"<% } %>>
       <table class="report-table">
         <thead>
           <tr>

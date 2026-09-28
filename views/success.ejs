@@ -2,17 +2,21 @@
 <% if (state === "confirming") { %>
   <p class="eyebrow">Almost there</p>
   <h1>Confirming your payment…</h1>
-  <div class="card" role="status" aria-live="polite">
+  <%# Polled by public/app.js (no timed reload): it reloads once when the payment is confirmed,
+      and after pollMaxTicks checks swaps the "checks again" line for the "check again" text. %>
+  <div class="card" role="status" aria-live="polite"<% if (pollUrl) { %> data-poll-url="<%= pollUrl %>" data-poll-interval="<%= pollIntervalMs %>" data-poll-max="<%= pollMaxTicks %>"<% } %>>
     <p class="row"><span class="spinner" aria-hidden="true"></span> <span>We're waiting for the payment confirmation for your <%= product.name %>. This usually takes a few seconds.</span></p>
     <% if (refreshing) { %>
-      <p class="small muted mb-0">This page checks again every few seconds. <a href="<%= refreshUrl %>">Check now</a>.</p>
-    <% } else { %>
-      <p class="mb-0">
-        We haven't received a confirmation yet. If you completed the payment, keep this link and
-        <a href="<%= refreshUrl %>">check again</a> in a minute; your receipt email will also contain the report link.
-        If you did not pay, nothing has been charged.
+      <p class="small muted mb-0" data-poll-active>
+        This page checks again every few seconds. <a href="<%= refreshUrl %>">Check now</a>.
+        <noscript>With JavaScript off it won't check by itself, so use Check now.</noscript>
       </p>
     <% } %>
+    <p class="mb-0" data-poll-expired<% if (refreshing) { %> hidden<% } %>>
+      We haven't received a confirmation yet. If you completed the payment, keep this link and
+      <a href="<%= refreshUrl %>">check again</a> in a minute; once it is confirmed we also email you <%= product.id === "pack5" ? "your code" : "the report link when the report is ready" %>.
+      If you did not pay, nothing has been charged.
+    </p>
     <% if (mockCheckoutUrl) { %>
       <p class="mt-2 mb-0"><a class="btn" href="<%= mockCheckoutUrl %>">Return to the test checkout</a></p>
     <% } %>
@@ -21,7 +25,11 @@
   <% const isPack = order.product === "pack5"; %>
   <% if (state === "refunded") { %>
     <div class="alert alert-warning" role="status">
-      <strong>This order was refunded.</strong> Anything already generated stays available below.
+      <% if (isPack) { %>
+        <strong>This order was refunded.</strong> Its code was cancelled, so it can't start new audits. Reports already created with it stay available.
+      <% } else { %>
+        <strong>This order was refunded.</strong> Anything already generated stays available below.
+      <% } %>
     </div>
   <% } else { %>
     <div class="alert alert-success" role="status">
@@ -29,7 +37,16 @@
     </div>
   <% } %>
 
-  <% if (isPack) { %>
+  <% if (isPack && state === "refunded") { %>
+    <p class="eyebrow">Agency 5-Pack</p>
+    <h1>5-Pack refunded</h1>
+    <div class="card">
+      <p>This code was cancelled after a refund<% if (creditCode) { %>: <code><%= creditCode.code %></code><% } %>.</p>
+      <% if (creditCode) { %>
+        <p class="mb-0"><a class="btn" href="/credits/<%= creditCode.code %>">See the audits made with it</a></p>
+      <% } %>
+    </div>
+  <% } else if (isPack) { %>
     <p class="eyebrow">Agency 5-Pack</p>
     <h1>Your 5-Pack is ready</h1>
     <% if (creditCode) { %>
@@ -52,6 +69,20 @@
         We could not find the code for this order. Reply to your receipt email and we'll sort it out.
       </div>
     <% } %>
+  <% } else if (audit && audit.status === "failed") { %>
+    <p class="eyebrow"><%= product.name %></p>
+    <h1>Your audit could not be completed</h1>
+    <div class="card">
+      <p>We couldn't finish scanning <span class="break"><strong><%= audit.url %></strong></span>. The report page explains why.</p>
+      <p><a class="btn btn-primary btn-lg" href="/r/<%= audit.token %>" data-testid="report-link">Open your report page</a></p>
+      <p class="mb-0">
+        <% if (emailOutbox) { %>
+          In test mode, see <a href="/outbox">/outbox</a> for the email we would have sent.
+        <% } else { %>
+          We emailed <%= order.email %> about it. Reply to that email for a re-run or a refund.
+        <% } %>
+      </p>
+    </div>
   <% } else { %>
     <p class="eyebrow"><%= product.name %></p>
     <h1>Your audit is running</h1>

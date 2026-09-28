@@ -292,7 +292,8 @@ export function toRemediationRecord(audit: AuditRow, summary: AuditSummary, find
       "Pages scanned",
       escapeHtml(
         `${formatNumber(summary.pagesScanned)} of ${formatNumber(summary.pagesRequested)} requested` +
-          (summary.pagesFailed > 0 ? ` (${plural(summary.pagesFailed, "page")} could not be loaded)` : ""),
+          (summary.pagesFailed > 0 ? ` (${plural(summary.pagesFailed, "page")} could not be loaded)` : "") +
+          ((summary.pagesSkipped ?? 0) > 0 ? ` (${plural(summary.pagesSkipped ?? 0, "page")} not scanned: time limit reached)` : ""),
       ),
     ) +
     recordRow("Prepared by", escapeHtml(preparedBy)) +

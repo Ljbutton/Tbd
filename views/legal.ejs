@@ -59,7 +59,7 @@
     <p>This site sets no cookies and loads no analytics, advertising or social-media scripts. The only counters we keep are server-side totals of how many free scans, checkouts and reports happened, with no visitor identity attached.</p>
 
     <h2>2. What we store</h2>
-    <div class="table-wrap">
+    <div class="table-wrap" tabindex="0" role="region" aria-label="What we store">
       <table class="table">
         <thead>
           <tr><th scope="col">Data</th><th scope="col">Why</th><th scope="col">How long</th></tr>
@@ -68,7 +68,7 @@
           <tr>
             <th scope="row">Website address</th>
             <td>The address you ask us to scan, for free scans and paid audits, and the addresses of the pages the crawler found.</td>
-            <td>Free scan results: 24 hours. Audits: 12 months after the audit.</td>
+            <td>Paid audits: until you ask us to delete them (section 5). Free scans: the result is stored with no name or email attached, reused for 24 hours if the same page is scanned again, and not deleted automatically.</td>
           </tr>
           <tr>
             <th scope="row">Email address</th>
@@ -78,17 +78,17 @@
           <tr>
             <th scope="row">Scan results</th>
             <td>Page addresses, page titles, HTTP status and the axe-core results for each page, including short HTML snippets (up to 600 characters) of the elements that failed.</td>
-            <td>12 months after the audit.</td>
+            <td>Until you ask us to delete them (section 5).</td>
           </tr>
           <tr>
             <th scope="row">Screenshots</th>
             <td>Small crops of the elements behind the top ten findings, so the report can show you what it means. Free scans embed up to three of these in the result and store them with the cached result.</td>
-            <td>Free scans: 24 hours. Audits: 12 months.</td>
+            <td>Paid audits: until you ask us to delete them (section 5). Free scans: kept with the free scan result, as above.</td>
           </tr>
           <tr>
             <th scope="row">Report files</th>
             <td>The PDF, JSON and CSV built from the findings, kept so your report link keeps working.</td>
-            <td>12 months after the audit.</td>
+            <td>Until you ask us to delete them (section 5).</td>
           </tr>
           <tr>
             <th scope="row">Order data</th>
@@ -97,13 +97,13 @@
           </tr>
           <tr>
             <th scope="row">Emails we send</th>
-            <td>Copies of the report-ready, review and credit-code emails, so we can resend them if one goes missing.</td>
-            <td>12 months.</td>
+            <td>Copies of the emails we send you (report ready, review, credit code, re-scan reminder, failed audit), so we can resend them if one goes missing.</td>
+            <td>Until you ask us to delete them (section 5).</td>
           </tr>
           <tr>
-            <th scope="row">Server logs</th>
-            <td>IP address, requested path and time, used for rate limiting free scans and for spotting abuse.</td>
-            <td>30 days.</td>
+            <th scope="row">Request logs</th>
+            <td>Free-scan rate limiting counts requests per IP address in memory and forgets them within the hour. We keep no request log of our own; our hosting provider may keep its own request logs under its own retention policy.</td>
+            <td>Rate-limit counts: up to 1 hour. Hosting provider logs: set by the provider.</td>
           </tr>
         </tbody>
       </table>

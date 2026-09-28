@@ -16,7 +16,11 @@
   <% } %>
 
   <div class="admin-actions mb-2">
-    <form method="post" action="/admin/audits/<%= audit.id %>/rerun">
+    <form method="post" action="/admin/audits/<%= audit.id %>/rerun" class="admin-actions">
+      <% if (!audit.rescan_of) { %>
+        <label for="rerun-url" class="small muted">Address</label>
+        <input type="url" id="rerun-url" name="url" value="<%= audit.url %>" maxlength="2048" autocomplete="off" style="min-width: 18rem;">
+      <% } %>
       <% if (canRerun) { %>
         <button type="submit" class="btn">Re-run</button>
       <% } else { %>
@@ -80,7 +84,7 @@
       <% if (summary) { %>
         <h3 style="font-size:1rem;">Scan summary</h3>
         <dl class="admin-kv mb-0">
-          <dt>Pages</dt><dd><%= summary.pagesScanned %> scanned of <%= summary.pagesRequested %> requested, <%= summary.pagesFailed %> failed</dd>
+          <dt>Pages</dt><dd><%= summary.pagesScanned %> scanned of <%= summary.pagesRequested %> requested, <%= summary.pagesFailed %> failed<% if (summary.pagesSkipped) { %>, <%= summary.pagesSkipped %> skipped (time budget)<% } %></dd>
           <dt>Findings</dt><dd><%= summary.findingsCount %> (<%= summary.totalViolationNodes %> elements)</dd>
           <dt>By impact</dt><dd><%= summary.byImpact ? Object.keys(summary.byImpact).map((k) => k + " " + summary.byImpact[k]).join(", ") : "" %></dd>
           <dt>Window</dt><dd><%= formatStamp(summary.scanStartedAt) %> to <%= formatStamp(summary.scanFinishedAt) %></dd>
@@ -93,7 +97,7 @@
   <% if (jobs.length === 0) { %>
     <p class="muted">No job rows for this audit.</p>
   <% } else { %>
-    <div class="table-wrap">
+    <div class="table-wrap" tabindex="0" role="region" aria-label="Jobs for this audit">
       <table class="table table-compact">
         <caption class="visually-hidden">Jobs for this audit</caption>
         <thead>
@@ -126,7 +130,7 @@
 
   <h2 style="font-size:1.25rem;">Log</h2>
   <% if (audit.log) { %>
-    <pre class="admin-log"><%= audit.log %></pre>
+    <pre class="admin-log" tabindex="0" role="region" aria-label="Audit log"><%= audit.log %></pre>
   <% } else { %>
     <p class="muted">Nothing logged yet.</p>
   <% } %>
@@ -135,7 +139,7 @@
   <% if (pages.length === 0) { %>
     <p class="muted">No pages scanned yet.</p>
   <% } else { %>
-    <div class="table-wrap">
+    <div class="table-wrap" tabindex="0" role="region" aria-label="Pages scanned">
       <table class="table table-compact">
         <caption class="visually-hidden">Pages scanned</caption>
         <thead>
@@ -170,7 +174,7 @@
   <% if (findings.length === 0) { %>
     <p class="muted">No findings stored.</p>
   <% } else { %>
-    <div class="table-wrap">
+    <div class="table-wrap" tabindex="0" role="region" aria-label="Ranked findings">
       <table class="table table-compact">
         <caption class="visually-hidden">Ranked findings</caption>
         <thead>

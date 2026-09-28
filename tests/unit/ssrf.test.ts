@@ -10,9 +10,16 @@ vi.mock("node:dns/promises", () => ({ lookup: mocks.lookup, default: { lookup: m
 
 // The guard must be tested in its strict mode regardless of the developer's shell.
 delete process.env.ALLOW_PRIVATE_TARGETS;
-const { assertPublicUrl, isPublicIp, isBlockedHostname, resolveAddresses, SSRF_MESSAGES } = await import(
-  "../../src/scan/ssrf.js"
-);
+const { assertPublicUrl, isPublicIp, isBlockedHostname, isDeniedHostname, pinnedLookup, resolveAddresses, SSRF_MESSAGES } =
+  await import("../../src/scan/ssrf.js");
+
+type LookupResult = { err: (Error & { code?: string }) | null; address: unknown; family?: number };
+
+function callLookup(hostname: string, options: { all?: boolean; family?: number } = {}): Promise<LookupResult> {
+  return new Promise((resolve) => {
+    pinnedLookup(hostname, options, (err, address, family) => resolve({ err, address, family }));
+  });
+}
 
 function resolvesTo(...addresses: string[]): void {
   mocks.lookup.mockResolvedValue(addresses.map((address) => ({ address, family: address.includes(":") ? 6 : 4 })));
@@ -213,6 +220,52 @@ describe("resolveAddresses", () => {
     expect(mocks.lookup).not.toHaveBeenCalled();
     resolvesTo("1.1.1.1", "1.0.0.1");
     expect(await resolveAddresses("one.one.one.one")).toEqual(["1.1.1.1", "1.0.0.1"]);
+  });
+});
+
+describe("pinnedLookup (connect-time pinning)", () => {
+  it("hands the socket only the addresses it vetted", async () => {
+    resolvesTo("93.184.216.34", "2606:2800:220:1:248:1893:25c8:1946");
+    const all = await callLookup("dual.example.com", { all: true });
+    expect(all.err).toBeNull();
+    expect(all.address).toEqual([
+      { address: "93.184.216.34", family: 4 },
+      { address: "2606:2800:220:1:248:1893:25c8:1946", family: 6 },
+    ]);
+    const one = await callLookup("dual.example.com");
+    expect(one).toEqual({ err: null, address: "93.184.216.34", family: 4 });
+    const v6 = await callLookup("dual.example.com", { family: 6 });
+    expect(v6).toEqual({ err: null, address: "2606:2800:220:1:248:1893:25c8:1946", family: 6 });
+  });
+
+  it("refuses a name whose answer at connect time is private, even after an earlier public answer", async () => {
+    // DNS rebinding: the first answer (the pre-flight check) is public, the second (the connection) is not.
+    mocks.lookup
+      .mockResolvedValueOnce([{ address: "93.184.216.34", family: 4 }])
+      .mockResolvedValueOnce([{ address: "169.254.169.254", family: 4 }]);
+    await expect(assertPublicUrl("https://rebind.example.com/")).resolves.toBeInstanceOf(URL);
+    const atConnect = await callLookup("rebind.example.com", { all: true });
+    expect(atConnect.err?.code).toBe("blocked_target");
+    resolvesTo("93.184.216.34", "10.0.0.7");
+    expect((await callLookup("mixed.example.com")).err?.code).toBe("blocked_target");
+  });
+
+  it("refuses blocked names without a lookup and reports DNS failures", async () => {
+    expect((await callLookup("localhost")).err?.code).toBe("blocked_target");
+    expect((await callLookup("metadata.google.internal")).err?.code).toBe("blocked_target");
+    expect(mocks.lookup).not.toHaveBeenCalled();
+    mocks.lookup.mockRejectedValue(Object.assign(new Error("getaddrinfo ENOTFOUND"), { code: "ENOTFOUND" }));
+    expect((await callLookup("nope.invalid")).err?.code).toBe("dns_failed");
+  });
+
+  it("isDeniedHostname covers IP literals, which never reach a lookup", () => {
+    for (const host of ["127.0.0.1", "169.254.169.254", "[::1]", "10.0.0.1", "localhost", "db.internal"]) {
+      expect(isDeniedHostname(host), host).toBe(true);
+    }
+    for (const host of ["8.8.8.8", "example.com", "[2001:db8::1]"]) {
+      expect(isDeniedHostname(host), host).toBe(false);
+    }
+    expect(mocks.lookup).not.toHaveBeenCalled();
   });
 });
 

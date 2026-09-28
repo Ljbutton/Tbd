@@ -241,9 +241,16 @@ describe("fixHtml transformers", () => {
     expect(fix("role-img-alt", '<span role="img" class="icon-star"></span>')).toBe('<span role="img" class="icon-star" aria-label="Describe what the image shows"></span>');
   });
 
-  it("escapes derived label text and never throws on garbage input", () => {
+  it("escapes derived label text exactly once and never throws on garbage input", () => {
+    // axe's outerHTML already encodes "&" and quotes inside attribute values: decode once, escape once.
     expect(fix("label", '<input name="a" placeholder="Tom &amp; Jerry <3">')).toBe(
-      '<label for="a">Tom &amp;amp; Jerry &lt;3</label>\n<input name="a" placeholder="Tom &amp; Jerry <3" id="a">',
+      '<label for="a">Tom &amp; Jerry &lt;3</label>\n<input name="a" placeholder="Tom &amp; Jerry <3" id="a">',
+    );
+    expect(fix("label", '<input name="q" placeholder="Say &quot;hi&quot; &#38; wave">')).toBe(
+      '<label for="q">Say "hi" &amp; wave</label>\n<input name="q" placeholder="Say &quot;hi&quot; &#38; wave" id="q">',
+    );
+    expect(fix("label", '<input name="q" title="&amp;lt;b&amp;gt;">')).toBe(
+      '<label for="q">&amp;lt;b&amp;gt;</label>\n<input name="q" title="&amp;lt;b&amp;gt;" id="q">',
     );
     for (const [id, rule] of Object.entries(RULES)) {
       if (!rule.fixHtml) continue;
@@ -283,13 +290,25 @@ describe("buildMockNarrative", () => {
     ]);
   });
 
+  it("leaves out the After block whenever the transformer changes nothing", () => {
+    const unmapped = mock.dictionaryFindingNarrative(
+      finding(1, "autocomplete-valid", { exampleHtml: '<input autocomplete="banana" name="x">' }),
+    );
+    expect(unmapped.beforeHtml).toBe('<input autocomplete="banana" name="x">');
+    expect(unmapped.afterHtml).toBeNull();
+    const mapped = mock.dictionaryFindingNarrative(finding(1, "autocomplete-valid", { exampleHtml: '<input autocomplete="zipcode" name="zip">' }));
+    expect(mapped.afterHtml).toBe('<input autocomplete="postal-code" name="zip">');
+  });
+
   it("maps every finding to a dictionary entry with before/after markup", () => {
     expect(narrative.findings.map((f) => f.ruleId)).toEqual(["image-alt", "color-contrast", "label", "some-unknown-rule"]);
     const [imageAlt, contrast, label, unknown] = narrative.findings;
     expect(imageAlt?.beforeHtml).toBe('<img src="/img/hero-candle.svg">');
     expect(imageAlt?.afterHtml).toBe('<img src="/img/hero-candle.svg" alt="Describe what the image shows">');
     expect(imageAlt?.effort).toBe("hours");
-    expect(contrast?.afterHtml).toBe(contrast?.beforeHtml);
+    // A CSS-only fix leaves the markup unchanged, so there is no "after" block to show.
+    expect(contrast?.beforeHtml).toBe('<p class="lead">Hand-poured in small batches</p>');
+    expect(contrast?.afterHtml).toBeNull();
     expect(label?.afterHtml).toContain('<label for="email">Your email</label>');
     expect(unknown?.title).toBe("Custom widgets must announce themselves");
     expect(unknown?.beforeHtml).toBeNull();
@@ -373,6 +392,23 @@ describe("claude narrative helpers", () => {
     expect(claude.copyRuleViolation({ ...base, nextSteps: ["Fixing these issues helps, but this does not make your site compliant."] })).toBeNull();
     expect(claude.copyRuleViolation({ ...base, executiveSummary: "After these fixes your site will be WCAG compliant." })).toMatch(/forbidden wording/);
     expect(claude.copyRuleViolation({ ...base, findings: [{ ...base.findings[0]!, whyItMatters: "We certify this page." }] })).toMatch(/forbidden wording/);
+    for (const claim of [
+      "After these fixes your site will meet WCAG 2.2 AA and you are now ADA-ready and lawsuit-proof.",
+      "Fix these and your store is lawsuit proof.",
+      "This makes the checkout ADA ready.",
+      "A litigation-proof site starts here.",
+    ]) {
+      expect(claude.copyRuleViolation({ ...base, executiveSummary: claim }), claim).toMatch(/forbidden wording/);
+    }
+    // Honest copy must not be thrown away.
+    for (const honest of [
+      "Adjust the color so the text meets WCAG 2.2 AA contrast (4.5:1).",
+      "This is not legal advice.",
+      "Fixing these issues does not protect you from lawsuits, but it removes the barriers they cite.",
+      "Your theme's readiness for mobile users is good.",
+    ]) {
+      expect(claude.copyRuleViolation({ ...base, executiveSummary: honest }), honest).toBeNull();
+    }
   });
 
   it("reconcileNarrative fills gaps from the dictionary, drops unknown rules, forces beforeHtml and pads manual checks", () => {
@@ -410,6 +446,15 @@ describe("claude narrative helpers", () => {
     expect(narrative.manualChecks.length).toBeGreaterThanOrEqual(8);
     expect(narrative.manualChecks.length).toBeLessThanOrEqual(12);
     expect(narrative.manualChecks[0]).toEqual({ title: "Tab through checkout", how: "Use only the keyboard." });
+  });
+
+  it("reconcileNarrative drops a model afterHtml that repeats the example markup", () => {
+    const contrast = sampleFindings[1]!;
+    const base = claude.NarrativeSchema.parse({ ...mock.buildMockNarrative([contrast], summary, siteMeta) });
+    const entry = { ...base.findings[0]!, beforeHtml: contrast.exampleHtml, afterHtml: ` ${contrast.exampleHtml} ` };
+    const narrative = claude.reconcileNarrative({ ...base, findings: [entry] }, [contrast], summary, siteMeta, "m");
+    expect(narrative.findings[0]?.beforeHtml).toBe(contrast.exampleHtml);
+    expect(narrative.findings[0]?.afterHtml).toBeNull();
   });
 
   it("reconcileNarrative gives dictionary entries to findings beyond the top 25 even when the model wrote them", () => {

@@ -3,7 +3,9 @@
 import { AxeBuilder } from "@axe-core/playwright";
 import axe from "axe-core";
 import type { Page } from "playwright";
+import { violationNodeCount } from "../report/rank.js";
 import type { Impact, PageScan, RawNode, RawViolation, Viewport } from "../types.js";
+import { egressFailure } from "./egress.js";
 
 export const AXE_CORE_VERSION: string = axe.version;
 export const AXE_TAGS = ["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22aa"] as const;
@@ -43,7 +45,7 @@ function toRawNode(node: axe.NodeResult): RawNode {
   return raw;
 }
 
-/** Maps an axe Result to the storable RawViolation shape (max 25 nodes, html truncated). */
+/** Maps an axe Result to the storable RawViolation shape (max 25 example nodes, html truncated, true count kept in nodeCount). */
 export function toRawViolation(result: axe.Result): RawViolation {
   return {
     id: result.id,
@@ -53,6 +55,7 @@ export function toRawViolation(result: axe.Result): RawViolation {
     helpUrl: result.helpUrl ?? "",
     description: result.description ?? "",
     nodes: (result.nodes ?? []).slice(0, MAX_NODES_PER_RULE).map(toRawNode),
+    nodeCount: (result.nodes ?? []).length,
   };
 }
 
@@ -74,15 +77,24 @@ function withTimeout<T>(work: Promise<T>, ms: number, label: string): Promise<T>
 /**
  * Navigates `page` to `url`, waits 1.5s for the page to settle, runs axe with
  * the WCAG 2.x A/AA tag set (the `region` best-practice rule disabled) and
- * returns the mapped result. Never throws: any failure (navigation, axe,
- * the 45s overall cap) yields a PageScan with `error` and empty arrays.
+ * returns the mapped result. Never throws: any failure (navigation, an HTTP
+ * status of 400 or more, axe, the 45s overall cap) yields a PageScan with
+ * `error` and empty arrays; `statusCode` is kept for the pages table.
+ * `timeoutMs` lowers the overall cap (and the navigation timeout with it) when
+ * the audit's time budget is nearly spent; it never raises it above 45s.
  */
-export async function scanPage(page: Page, url: string, viewport: Viewport): Promise<PageScan> {
+export async function scanPage(page: Page, url: string, viewport: Viewport, timeoutMs: number = PAGE_SCAN_TIMEOUT_MS): Promise<PageScan> {
   const scan: PageScan = { url, viewport, statusCode: null, title: "", violations: [], incomplete: [] };
+  const capMs = Math.max(1, Math.min(PAGE_SCAN_TIMEOUT_MS, timeoutMs));
 
   const work = async (): Promise<void> => {
-    const response = await page.goto(url, { waitUntil: "domcontentloaded", timeout: NAVIGATION_TIMEOUT_MS });
+    const response = await page.goto(url, { waitUntil: "domcontentloaded", timeout: Math.min(NAVIGATION_TIMEOUT_MS, capMs) });
+    // Blocked or unreachable: the egress proxy answered, not the site.
+    const egress = response ? egressFailure(response.headers()) : null;
+    if (egress !== null) throw new Error(egress);
     scan.statusCode = response ? response.status() : null;
+    // A 4xx/5xx (WAF challenge, rate limit, maintenance page) is not the customer's page: fail the scan.
+    if (scan.statusCode !== null && scan.statusCode >= 400) throw new Error(`HTTP ${scan.statusCode}`);
     await page.waitForTimeout(SETTLE_MS);
     try {
       scan.title = (await page.title()).trim();
@@ -98,7 +110,7 @@ export async function scanPage(page: Page, url: string, viewport: Viewport): Pro
   };
 
   try {
-    await withTimeout(work(), PAGE_SCAN_TIMEOUT_MS, "Page scan");
+    await withTimeout(work(), capMs, "Page scan");
   } catch (err) {
     scan.error = errorMessage(err);
     scan.violations = [];
@@ -109,5 +121,5 @@ export async function scanPage(page: Page, url: string, viewport: Viewport): Pro
 
 /** Total violation nodes in one scan (what the progress counter and teaser report). */
 export function countViolationNodes(scan: PageScan): number {
-  return scan.violations.reduce((sum, v) => sum + v.nodes.length, 0);
+  return scan.violations.reduce((sum, v) => sum + violationNodeCount(v), 0);
 }

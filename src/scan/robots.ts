@@ -2,6 +2,12 @@
 // honoured; the crawler always scans the start URL the buyer asked for and
 // applies these rules to discovered links only.
 
+import http from "node:http";
+import https from "node:https";
+import type { Readable } from "node:stream";
+import zlib from "node:zlib";
+import { isDeniedHostname, pinnedLookup } from "./ssrf.js";
+
 export interface RobotsRule {
   allow: boolean;
   /** Raw pattern as written (may contain `*` wildcards and a `$` end anchor). */
@@ -20,6 +26,8 @@ export interface Robots {
 }
 
 export const ROBOTS_TIMEOUT_MS = 8000;
+/** Redirect hops followed for robots.txt (RFC 9309 asks for at least five). */
+export const MAX_ROBOTS_REDIRECTS = 5;
 const MAX_ROBOTS_BYTES = 512 * 1024;
 const ROBOTS_USER_AGENT = "Mozilla/5.0 (compatible; AccessAuditBot/1.0; +https://accessaudit.example/bot)";
 
@@ -102,32 +110,117 @@ export function parseRobots(text: string, fetched = true): Robots {
 }
 
 export interface LoadRobotsOptions {
-  /** Fetch timeout in milliseconds (default 8000). */
+  /** Fetch timeout in milliseconds for the whole redirect chain (default 8000). */
   timeoutMs?: number;
+}
+
+const REDIRECT_STATUSES = new Set([301, 302, 303, 307, 308]);
+
+interface RobotsResponse {
+  status: number;
+  location: string | null;
+  body: string | null;
+}
+
+function decoded(res: http.IncomingMessage): Readable {
+  const encoding = String(res.headers["content-encoding"] ?? "").trim().toLowerCase();
+  if (encoding === "gzip" || encoding === "x-gzip") return res.pipe(zlib.createGunzip());
+  if (encoding === "deflate") return res.pipe(zlib.createInflate());
+  if (encoding === "br") return res.pipe(zlib.createBrotliDecompress());
+  return res;
+}
+
+/**
+ * One GET without following redirects. The socket is opened through
+ * pinnedLookup, so it connects only to addresses that passed the SSRF check.
+ * Bodies are read (up to MAX_ROBOTS_BYTES) only for 200 responses.
+ */
+function getOnce(target: URL, signal: AbortSignal): Promise<RobotsResponse> {
+  const client = target.protocol === "https:" ? https : http;
+  return new Promise<RobotsResponse>((resolve, reject) => {
+    const req = client.request(
+      target,
+      {
+        method: "GET",
+        headers: { "user-agent": ROBOTS_USER_AGENT, accept: "text/plain, */*;q=0.5", "accept-encoding": "identity" },
+        lookup: pinnedLookup,
+        agent: false,
+        signal,
+      },
+      (res) => {
+        const status = res.statusCode ?? 0;
+        const location = typeof res.headers.location === "string" ? res.headers.location : null;
+        if (status !== 200) {
+          res.resume();
+          resolve({ status, location, body: null });
+          return;
+        }
+        const stream = decoded(res);
+        const chunks: Buffer[] = [];
+        let size = 0;
+        let settled = false;
+        const finish = (): void => {
+          if (settled) return;
+          settled = true;
+          resolve({ status, location, body: Buffer.concat(chunks).toString("utf8").slice(0, MAX_ROBOTS_BYTES) });
+        };
+        stream.on("data", (chunk: Buffer) => {
+          if (settled) return;
+          chunks.push(chunk);
+          size += chunk.length;
+          if (size >= MAX_ROBOTS_BYTES) {
+            finish();
+            res.destroy();
+          }
+        });
+        stream.on("end", finish);
+        stream.on("error", (err) => {
+          if (!settled) reject(err);
+        });
+        res.on("error", (err) => {
+          if (!settled) reject(err);
+        });
+        res.on("close", () => {
+          if (!settled && !res.complete) reject(new Error("robots.txt response closed early"));
+        });
+      },
+    );
+    req.on("error", reject);
+    req.end();
+  });
 }
 
 /**
  * Fetches `${origin}/robots.txt` with an 8s timeout. Any non-200 response,
- * network error or timeout yields an allow-all Robots.
+ * network error or timeout yields an allow-all Robots. Redirects are followed
+ * by hand (at most five) and every hop must be an http(s) URL whose host
+ * passes the SSRF guard: blocked names and IP literals are refused before
+ * connecting and names are vetted at connect time by pinnedLookup. A refused
+ * hop also yields allow-all, since crawling itself is route-guarded anyway.
  */
 export async function loadRobots(origin: string, options: LoadRobotsOptions = {}): Promise<Robots> {
   const timeoutMs = options.timeoutMs ?? ROBOTS_TIMEOUT_MS;
-  let base: URL;
+  let current: URL;
   try {
-    base = new URL(origin);
+    current = new URL("/robots.txt", new URL(origin).origin);
   } catch {
     return allowAll();
   }
-  const target = `${base.origin}/robots.txt`;
+  const signal = AbortSignal.timeout(timeoutMs);
   try {
-    const response = await fetch(target, {
-      signal: AbortSignal.timeout(timeoutMs),
-      redirect: "follow",
-      headers: { "user-agent": ROBOTS_USER_AGENT, accept: "text/plain, */*;q=0.5" },
-    });
-    if (response.status !== 200) return allowAll();
-    const text = (await response.text()).slice(0, MAX_ROBOTS_BYTES);
-    return parseRobots(text, true);
+    for (let hop = 0; hop <= MAX_ROBOTS_REDIRECTS; hop++) {
+      if (current.protocol !== "http:" && current.protocol !== "https:") return allowAll();
+      if (current.username !== "" || current.password !== "") return allowAll();
+      if (isDeniedHostname(current.hostname)) return allowAll();
+      const response = await getOnce(current, signal);
+      if (REDIRECT_STATUSES.has(response.status) && response.location !== null) {
+        current = new URL(response.location, current);
+        continue;
+      }
+      if (response.status !== 200 || response.body === null) return allowAll();
+      return parseRobots(response.body, true);
+    }
+    return allowAll();
   } catch {
     return allowAll();
   }

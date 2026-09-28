@@ -106,7 +106,11 @@ export function buildClaudePayload(findings: Finding[], summary: AuditSummary, s
 }
 
 const ALLOWED_COMPLIANCE_PHRASE = /this does not make your site compliant/gi;
-const FORBIDDEN_COPY = /complian|certif/i;
+// Kept deliberately narrow: a match discards the whole Claude response, so only
+// wording with no legitimate use in a report is listed. Claims such as "meets
+// WCAG" or "protected from lawsuits" can appear negated in honest copy and are
+// left to the system prompt.
+const FORBIDDEN_COPY = /complian|certif|lawsuit[- ]?proof|litigation[- ]?proof|sue[- ]?proof|\bada[- ]ready\b/i;
 
 function collectStrings(value: unknown, out: string[]): void {
   if (typeof value === "string") out.push(value);
@@ -170,7 +174,11 @@ export function reconcileNarrative(
       whyItMatters: fromModel.whyItMatters.trim() || dictionary.whyItMatters,
       fixSteps: fixSteps.length > 0 ? fixSteps : dictionary.fixSteps,
       beforeHtml: finding.exampleHtml,
-      afterHtml: finding.exampleHtml === null ? null : fromModel.afterHtml,
+      // An "after" identical to the "before" is not a fix (CSS-only fixes belong in fixSteps).
+      afterHtml:
+        finding.exampleHtml === null || fromModel.afterHtml === null || fromModel.afterHtml.trim() === finding.exampleHtml.trim()
+          ? null
+          : fromModel.afterHtml,
       effort: fromModel.effort,
     };
   });

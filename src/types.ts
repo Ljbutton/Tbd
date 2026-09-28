@@ -35,7 +35,13 @@ export interface RawViolation {
   help: string;
   helpUrl: string;
   description: string;
+  /** Up to 25 example nodes (MAX_NODES_PER_RULE); count with violationNodeCount(). */
   nodes: RawNode[];
+  /**
+   * How many elements axe flagged before `nodes` was capped. Absent on rows
+   * stored before this field existed; fall back to `nodes.length` then.
+   */
+  nodeCount?: number;
 }
 
 export interface PageScan {
@@ -94,6 +100,8 @@ export interface AuditSummary {
   pagesRequested: number;
   pagesScanned: number;
   pagesFailed: number;
+  /** Pages found by the crawl but not scanned because the audit's time budget ran out (absent in older summaries). */
+  pagesSkipped?: number;
   totalViolationNodes: number;
   findingsCount: number;
   byImpact: Record<Impact, number>;
